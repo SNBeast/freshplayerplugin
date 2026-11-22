@@ -42,10 +42,11 @@
 #include <X11/Xlib.h>
 #include <glib.h>
 #include <libavcodec/avcodec.h>
-#include <libavcodec/vaapi.h>
 #include <libavcodec/vdpau.h>
 #include <libavutil/avutil.h>
 #include <libavutil/common.h>
+#include <libavutil/hwcontext.h>
+#include <libavutil/hwcontext_vaapi.h>
 #include <ppapi/c/dev/ppp_video_decoder_dev.h>
 #include <ppapi/c/pp_errors.h>
 #include <pthread.h>
@@ -58,8 +59,7 @@
 #if !HAVE_AVPixelFormat
 #define AVPixelFormat           PixelFormat
 #define AV_PIX_FMT_NONE         PIX_FMT_NONE
-#define AV_PIX_FMT_YUV420P      PIX_FMT_YUV420P
-#define AV_PIX_FMT_VAAPI_VLD    PIX_FMT_VAAPI_VLD
+#define AV_PIX_FMT_VAAPI        PIX_FMT_VAAPI
 #endif // !HAVE_AVPixelFormat
 
 #if !HAVE_AV_PIX_FMT_VDPAU
@@ -69,11 +69,6 @@
 #if !HAVE_AVCodecID
 #define AV_CODEC_ID_H264        CODEC_ID_H264
 #endif // !HAVE_AVCodecID
-
-#if !HAVE_AV_CODEC_FLAGS
-#define AV_CODEC_CAP_TRUNCATED  CODEC_CAP_TRUNCATED
-#define AV_CODEC_FLAG_TRUNCATED CODEC_FLAG_TRUNCATED
-#endif // !HAVE_AV_CODEC_FLAGS
 
 enum hwdec_api_e {
     HWDEC_NONE = 0,
@@ -102,7 +97,7 @@ struct pp_video_decoder_s {
     PP_Resource             orig_graphics3d;
     PP_Resource             graphics3d;
     int                     codec_id;
-    AVCodec                *avcodec;
+    const AVCodec          *avcodec;
     AVCodecContext         *avctx;
     AVCodecParserContext   *avparser;
     AVFrame                *avframe;
@@ -121,7 +116,6 @@ struct pp_video_decoder_s {
         VdpPresentationQueueTarget  vdp_presentation_queue_target;
         VdpPresentationQueue        vdp_presentation_queue;
     } *buffers;
-    struct vaapi_context    va_context;
     struct AVVDPAUContext   vdpau_context;
     VASurfaceID             surfaces[MAX_VA_SURFACES];
     VdpVideoSurface         vdp_video_surfaces[MAX_VDP_SURFACES];
@@ -199,7 +193,6 @@ deinitialize_decoder(struct pp_video_decoder_s *vd)
     }
 
     if (vd->avctx) {
-        avcodec_close(vd->avctx);
         avcodec_free_context(&vd->avctx);
     }
 
@@ -208,16 +201,6 @@ deinitialize_decoder(struct pp_video_decoder_s *vd)
 
     switch (vd->hwdec_api) {
     case HWDEC_VAAPI:
-        if (vd->va_context.context_id) {
-            vaDestroyContext(display.va, vd->va_context.context_id);
-            vd->va_context.context_id = 0;
-        }
-
-        if (vd->va_context.config_id) {
-            vaDestroyConfig(display.va, vd->va_context.config_id);
-            vd->va_context.config_id = 0;
-        }
-
         vaDestroySurfaces(display.va, vd->surfaces, MAX_VA_SURFACES);
         for (uintptr_t k = 0; k < MAX_VA_SURFACES; k ++) {
             vd->surfaces[k] = VA_INVALID_SURFACE;
@@ -309,15 +292,15 @@ prepare_vaapi_context(struct pp_video_decoder_s *vd, int width, int height)
 {
     VAStatus status;
 
-    vd->va_context.display = display.va;
-    vd->va_context.config_id = VA_INVALID_ID;
-    vd->va_context.context_id = VA_INVALID_ID;
+    AVBufferRef *hw_device_ref = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_VAAPI);
+    if (!hw_device_ref) {
+        trace_error("%s, can't allocate VAAPI device context\n", __func__);
+        goto err;
+    }
 
-    // function is called from libavcodec internals which were already protected by mutex
-    status = vaCreateConfig(display.va, VAProfileH264High, VAEntrypointVLD, NULL, 0,
-                            &vd->va_context.config_id);
-    if (status != VA_STATUS_SUCCESS) {
-        trace_error("%s, can't create VA config\n", __func__);
+    ((AVVAAPIDeviceContext *)((AVHWDeviceContext *)hw_device_ref->data)->hwctx)->display = display.va;
+    if (av_hwdevice_ctx_init(hw_device_ref) < 0) {
+        trace_error("%s, can't initialize VAAPI device context\n", __func__);
         goto err;
     }
 
@@ -333,19 +316,38 @@ prepare_vaapi_context(struct pp_video_decoder_s *vd, int width, int height)
         goto err;
     }
 
-    status = vaCreateContext(display.va, vd->va_context.config_id, width, height,
-                             VA_PROGRESSIVE, vd->surfaces, MAX_VA_SURFACES,
-                             &vd->va_context.context_id);
-    if (status != VA_STATUS_SUCCESS) {
-        trace_error("%s, can't create VA context\n", __func__);
+    AVBufferRef *hw_frames_ref = av_hwframe_ctx_alloc(hw_device_ref);
+    if (!hw_frames_ref) {
+        trace_error("%s, can't allocate VAAPI frames context\n", __func__);
         goto err;
     }
 
-    vd->avctx->hwaccel_context = &vd->va_context;
+    AVHWFramesContext *frames_ctx = (AVHWFramesContext *)hw_frames_ref->data;
+    frames_ctx->format = AV_PIX_FMT_VAAPI;
+    frames_ctx->sw_format = AV_PIX_FMT_NV12;
+    frames_ctx->width = width;
+    frames_ctx->height = height;
+    frames_ctx->initial_pool_size = MAX_VA_SURFACES;
+
+    AVVAAPIFramesContext *vaapi_frames_ctx = frames_ctx->hwctx;
+    vaapi_frames_ctx->surface_ids = vd->surfaces;
+    vaapi_frames_ctx->nb_surfaces = MAX_VA_SURFACES;
+
+    if (av_hwframe_ctx_init(hw_frames_ref) < 0) {
+        trace_error("%s, can't initialize VAAPI frames context\n", __func__);
+        goto err;
+    }
+
+    av_buffer_unref(&vd->avctx->hw_frames_ctx);
+    vd->avctx->hw_frames_ctx = hw_frames_ref;
+
+    av_buffer_unref(&hw_device_ref);
     vd->hwdec_api = HWDEC_VAAPI;
-    return AV_PIX_FMT_VAAPI_VLD;
+    return AV_PIX_FMT_VAAPI;
 
 err:
+    av_buffer_unref(&hw_frames_ref);
+    av_buffer_unref(&hw_device_ref);
     vd->failed_state = 1;
     vd->ppp_video_decoder_dev->NotifyError(vd->instance->id, vd->self_id,
                                            PP_VIDEODECODERERROR_UNREADABLE_INPUT);
@@ -429,7 +431,7 @@ get_format(struct AVCodecContext *s, const enum AVPixelFormat *fmt)
     int have_vdpau = 0;
 
     for (int k = 0; fmt[k] != AV_PIX_FMT_NONE; k ++) {
-        if (fmt[k] == AV_PIX_FMT_VAAPI_VLD)
+        if (fmt[k] == AV_PIX_FMT_VAAPI)
             have_vaapi = display.va_available;
         if (fmt[k] == AV_PIX_FMT_VDPAU)
             have_vdpau = display.vdpau_available;
@@ -494,11 +496,6 @@ get_buffer2(struct AVCodecContext *s, AVFrame *pic, int flags)
 {
     struct pp_video_decoder_s *vd = s->opaque;
 
-#if AVCTX_HAVE_REFCOUNTED_BUFFERS == 0
-    pic->type = FF_BUFFER_TYPE_USER;
-    pic->pkt_pts = s->pkt->pts;
-#endif
-
     switch (vd->hwdec_api) {
     case HWDEC_VAAPI:
         {
@@ -511,15 +508,16 @@ get_buffer2(struct AVCodecContext *s, AVFrame *pic, int flags)
                 }
             }
 
-            pic->data[0] = GSIZE_TO_POINTER(surface);
-            pic->data[1] = NULL;
-            pic->data[2] = NULL;
-            pic->data[3] = GSIZE_TO_POINTER(surface);
-
             if (surface == VA_INVALID_SURFACE) {
                 trace_error("%s, can't find free VA surface\n", __func__);
                 return -1;
             }
+
+            pic->data[0] = GSIZE_TO_POINTER(surface);
+            pic->data[1] = NULL;
+            pic->data[2] = NULL;
+            pic->data[3] = GSIZE_TO_POINTER(surface);
+            pic->hw_frames_ctx = av_buffer_ref(s->hw_frames_ctx);
         }
         break;
 
@@ -534,15 +532,15 @@ get_buffer2(struct AVCodecContext *s, AVFrame *pic, int flags)
                 }
             }
 
-            pic->data[0] = GSIZE_TO_POINTER(surface);
-            pic->data[1] = NULL;
-            pic->data[2] = NULL;
-            pic->data[3] = GSIZE_TO_POINTER(surface);
-
             if (surface == VDP_INVALID_HANDLE) {
                 trace_error("%s, can't find free VDP surface\n", __func__);
                 return -1;
             }
+
+            pic->data[0] = GSIZE_TO_POINTER(surface);
+            pic->data[1] = NULL;
+            pic->data[2] = NULL;
+            pic->data[3] = GSIZE_TO_POINTER(surface);
         }
         break;
 
@@ -556,7 +554,6 @@ get_buffer2(struct AVCodecContext *s, AVFrame *pic, int flags)
     if (!buf)
         return -1;
     pic->buf[0] = buf;
-    pic->reordered_opaque = s->reordered_opaque;
 #endif
 
     return 0;
@@ -625,18 +622,12 @@ initialize_decoder(struct pp_video_decoder_s *vd)
         goto err;
     }
 
-    if (vd->avcodec->capabilities & AV_CODEC_CAP_TRUNCATED) {
-        trace_info("%s, codec have AV_CODEC_CAP_TRUNCATED\n", __func__);
-        vd->avctx->flags |= AV_CODEC_FLAG_TRUNCATED;
-    }
-
     vd->avctx->opaque = vd;
     vd->avctx->thread_count = 1;
     vd->avctx->get_format = get_format;
 
 #if AVCTX_HAVE_REFCOUNTED_BUFFERS
     vd->avctx->get_buffer2 = get_buffer2;
-    vd->avctx->refcounted_frames = 1;
 #else
     vd->avctx->get_buffer = get_buffer;
     vd->avctx->release_buffer = release_buffer;
@@ -789,7 +780,7 @@ issue_frame(struct pp_video_decoder_s *vd)
 {
     AVFrame *frame = vd->avframe;
     uint32_t idx = find_free_buffer(vd);
-    int32_t  bitstream_buffer_id = (int32_t)frame->pkt_pts;
+    int32_t  bitstream_buffer_id = (int32_t)frame->pts;
 
     if (idx == (uint32_t)-1) {
         trace_warning("%s, no free buffer available\n", __func__);
@@ -863,24 +854,38 @@ void
 decode_frame(struct pp_video_decoder_s *vd, uint8_t *data, size_t data_len,
              int32_t bitstream_buffer_id)
 {
-    AVPacket packet;
-    av_init_packet(&packet);
-    packet.data = data;
-    packet.size = data_len;
-    packet.pts = bitstream_buffer_id;
+    AVPacket *packet = av_packet_alloc();
+
+    packet->data = data;
+    packet->size = data_len;
+    packet->pts = bitstream_buffer_id;
 
     // libavcodec can call hw functions, which in turn can call Xlib functions,
     // therefore we need to lock
     pthread_mutex_lock(&display.lock);
-    int got_frame = 0;
-    int len = avcodec_decode_video2(vd->avctx, vd->avframe, &got_frame, &packet);
+    int ret = avcodec_send_packet(vd->avctx, packet);
     pthread_mutex_unlock(&display.lock);
-    if (len < 0) {
-        trace_error("%s, error %d while decoding frame\n", __func__, len);
+
+    av_packet_free(&packet);
+
+    if (ret < 0) {
+        trace_error("%s, error %d while sending packet to decoder\n", __func__, ret);
         return;
     }
 
-    if (got_frame) {
+    while (1) {
+        pthread_mutex_lock(&display.lock);
+        int val = avcodec_receive_frame(vd->avctx, vd->avframe);
+        pthread_mutex_unlock(&display.lock);
+
+        if (val == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            // normal, nothing more for now
+            break;
+        }
+        if (val < 0) {
+            trace_error("%s, error %d while receiving frame from decoder\n", __func__, ret);
+            return;
+        }
         if (!vd->buffers_were_requested) {
             request_buffers(vd);
             vd->buffers_were_requested = 1;
@@ -1195,8 +1200,6 @@ void
 __attribute__((constructor))
 constructor_ppb_video_decoder(void)
 {
-    avcodec_register_all();
-
     register_interface(PPB_VIDEODECODER_DEV_INTERFACE_0_16, &ppb_video_decoder_dev_interface_0_16);
     register_resource(PP_RESOURCE_VIDEO_DECODER, ppb_video_decoder_destroy_priv);
 }

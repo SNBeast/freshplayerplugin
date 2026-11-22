@@ -1,0 +1,52 @@
+name: Publish Build
+
+on:
+  push:
+    branches: [ "master" ]
+
+permissions:
+  contents: write
+
+jobs:
+  armhf-build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - uses: gatk555/arm-runner-action@v2
+      name: Build inside chroot
+      with:
+        commands: sudo .github/scripts/build.sh
+        copy_artifact_path: artifact
+        image_additional_mb: 2048
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@master
+      with:
+        name: artifact-armhf
+        path: artifact
+  ia32-build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - name: Build inside container
+      run: |
+        docker run --rm \
+        --security-opt seccomp=unconfined \
+        -v "${{ github.workspace }}:/work" \
+        -w /work i386/debian:trixie \
+        bash -c ".github/scripts/build.sh"
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@master
+      with:
+        name: artifact-ia32
+        path: artifact
+  x64-build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - name: Build
+      run: sudo .github/scripts/build.sh
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@master
+      with:
+        name: artifact-x64
+        path: artifact
