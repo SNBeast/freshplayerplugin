@@ -22,6 +22,8 @@
  * SOFTWARE.
  */
 
+#define _GNU_SOURCE
+
 #include "config.h"
 #include "eintr_retry.h"
 #include "pp_interface.h"
@@ -38,8 +40,10 @@
 #include "trace_core.h"
 #include "utils.h"
 #include <dirent.h>
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <glib.h>
+#include <libv4l2.h>
 #include <linux/videodev2.h>
 #include <ppapi/c/dev/ppp_video_capture_dev.h>
 #include <ppapi/c/pp_errors.h>
@@ -49,9 +53,26 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-#if HAVE_LIBV4L2
-#include <libv4l2.h>
-#endif // HAVE_LIBV4L2
+#define GET_SYMBOL(handle, symname)                     \
+do {                                                    \
+    symname = dlsym(handle, #symname);                  \
+    if (symname == NULL) {                              \
+        trace_error("can't resolve " #symname "\n");    \
+        dlsym_failed = 1;                               \
+    }                                                   \
+} while (0)
+
+ssize_t (*d_v4l2_read)(int fd, void *buffer, size_t n);
+int (*d_v4l2_open)(const char *filename, int oflag);
+int (*d_v4l2_close)(int fd);
+int (*d_v4l2_ioctl)(int fd, unsigned long int request, void *data);
+
+#define v4l2_read d_v4l2_read
+#define v4l2_open d_v4l2_open
+#define v4l2_close d_v4l2_close
+#define v4l2_ioctl d_v4l2_ioctl
+
+static void *libv4l2_handle;
 
 struct pp_video_capture_s {
     COMMON_STRUCTURE_FIELDS
@@ -74,49 +95,70 @@ STATIC_ASSERT(sizeof(struct pp_video_capture_s) <= LARGEST_RESOURCE_SIZE);
 
 const char *default_capture_device = "/dev/video0";
 
-#if !HAVE_LIBV4L2
 // define simple wrappers, if libv4l2 is not used
 static
 ssize_t
-v4l2_read(int fd, void *buffer, size_t n)
+sub_v4l2_read(int fd, void *buffer, size_t n)
 {
     return read(fd, buffer, n);
 }
 
 static
 int
-v4l2_open(const char *filename, int oflag)
+sub_v4l2_open(const char *filename, int oflag)
 {
     return open(filename, oflag);
 }
 
 static
 int
-v4l2_close(int fd)
+sub_v4l2_close(int fd)
 {
     return close(fd);
 }
 
 static
 int
-v4l2_ioctl(int fd, unsigned long int request, void *data)
+sub_v4l2_ioctl(int fd, unsigned long int request, void *data)
 {
     return ioctl(fd, request, data);
 }
-#endif // !HAVE_LIBV4L2
-
 
 PP_Resource
 ppb_video_capture_create(PP_Instance instance)
 {
-    const struct PPP_VideoCapture_Dev_0_1 *ppp_video_capture_dev;
+    if (!v4l2_read) {
+        int dlsym_failed = 0;
+        if (!(libv4l2_handle = dlopen("libv4l2.so.2", RTLD_LAZY | RTLD_LOCAL))) {
+            if (!(libv4l2_handle = dlopen("libv4l2.so", RTLD_LAZY | RTLD_LOCAL))) {
+                dlsym_failed = 1;
+            }
+        }
+        if (!dlsym_failed) {
+            GET_SYMBOL(libv4l2_handle, v4l2_read);
+            GET_SYMBOL(libv4l2_handle, v4l2_open);
+            GET_SYMBOL(libv4l2_handle, v4l2_close);
+            GET_SYMBOL(libv4l2_handle, v4l2_ioctl);
+            if (dlsym_failed) {
+                dlclose(libv4l2_handle);
+                libv4l2_handle = NULL;
+            }
+        }
+        if (dlsym_failed) {
+            v4l2_read = sub_v4l2_read;
+            v4l2_open = sub_v4l2_open;
+            v4l2_close = sub_v4l2_close;
+            v4l2_ioctl = sub_v4l2_ioctl;
+        }
+    }
+
     struct pp_instance_s *pp_i = tables_get_pp_instance(instance);
     if (!pp_i) {
         trace_error("%s, bad instance\n", __func__);
         return 0;
     }
 
-    ppp_video_capture_dev = ppp_get_interface(PPP_VIDEO_CAPTURE_DEV_INTERFACE_0_1);
+    const struct PPP_VideoCapture_Dev_0_1 *ppp_video_capture_dev = ppp_get_interface(PPP_VIDEO_CAPTURE_DEV_INTERFACE_0_1);
     if (!ppp_video_capture_dev) {
         trace_error("%s, no viable %s\n", __func__, PPP_VIDEO_CAPTURE_DEV_INTERFACE_0_1);
         return 0;

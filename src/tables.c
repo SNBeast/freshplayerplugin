@@ -22,6 +22,8 @@
  * SOFTWARE.
  */
 
+#define _GNU_SOURCE
+
 #include "config.h"
 #include "ppb_instance.h"
 #include "screensaver_control.h"
@@ -30,6 +32,7 @@
 #include <GL/glx.h>
 #include <X11/Xlib.h>
 #include <X11/extensions/Xrandr.h>
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <glib.h>
 #include <pango/pangoft2.h>
@@ -38,9 +41,34 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#if HAVE_HWDEC
 #include <va/va_x11.h>
-#endif
+
+#define GET_SYMBOL(handle, symname)                     \
+do {                                                    \
+    symname = dlsym(handle, #symname);                  \
+    if (symname == NULL) {                              \
+        trace_error("can't resolve " #symname "\n");    \
+        dlsym_failed = 1;                               \
+    }                                                   \
+} while (0)
+
+typeof(vaInitialize) *d_vaInitialize;
+typeof(vaTerminate) *d_vaTerminate;
+typeof(vaGetDisplay) *d_vaGetDisplay;
+typeof(vdp_device_create_x11) *d_vdp_device_create_x11;
+
+#define vaInitialize d_vaInitialize
+#define vaTerminate d_vaTerminate
+
+#define vaGetDisplay d_vaGetDisplay
+
+#define vdp_device_create_x11 d_vdp_device_create_x11
+
+static void *libva_handle;
+static void *libva_x11_handle;
+static void *libvdpau_handle;
+
+static void *libfreshffmpegwrapper_handle;
 
 NPNetscapeFuncs     npn;
 struct display_s    display;
@@ -209,7 +237,6 @@ check_glx_extensions(void)
         glXGetProcAddress((GLubyte *)"glXWaitVideoSyncSGI");
 }
 
-#if HAVE_HWDEC
 static
 void *
 get_proc_helper(VdpFuncId func_id)
@@ -227,11 +254,40 @@ static
 void
 initialize_vaapi(void)
 {
-    VAStatus st;
+    if (!libva_handle) {
+        if (!(libva_handle = dlopen("libva.so.2", RTLD_LAZY | RTLD_LOCAL))) {
+            if (!(libva_handle = dlopen("libva.so", RTLD_LAZY | RTLD_LOCAL))) {
+                trace_error("%s, libva missing\n", __func__);
+                return;
+            }
+        }
+
+        if (!(libva_x11_handle = dlopen("libva-x11.so.2", RTLD_LAZY | RTLD_LOCAL))) {
+            if (!(libva_x11_handle = dlopen("libva-x11.so", RTLD_LAZY | RTLD_LOCAL))) {
+                trace_error("%s, libva-x11 missing\n", __func__);
+                dlclose(libva_handle);
+                libva_handle = NULL;
+                return;
+            }
+        }
+
+        int dlsym_failed = 0;
+        GET_SYMBOL(libva_handle, vaInitialize);
+        GET_SYMBOL(libva_handle, vaTerminate);
+        GET_SYMBOL(libva_x11_handle, vaGetDisplay);
+        if (dlsym_failed) {
+            dlclose(libva_handle);
+            libva_handle = NULL;
+            dlclose(libva_x11_handle);
+            libva_x11_handle = NULL;
+            return;
+        }
+    }
+
     int major, minor;
 
     display.va = vaGetDisplay(display.x);
-    st = vaInitialize(display.va, &major, &minor);
+    VAStatus st = vaInitialize(display.va, &major, &minor);
     if (st == VA_STATUS_SUCCESS) {
         trace_info_f("libva version %d.%d\n", major, minor);
         trace_info_f("libva driver vendor: %s\n", vaQueryVendorString(display.va));
@@ -256,10 +312,25 @@ static
 void
 initialize_vdpau(void)
 {
-    VdpStatus st;
+    if (!libvdpau_handle) {
+        if (!(libvdpau_handle = dlopen("libvdpau.so.1", RTLD_LAZY | RTLD_LOCAL))) {
+            if (!(libvdpau_handle = dlopen("libvdpau.so", RTLD_LAZY | RTLD_LOCAL))) {
+                trace_error("%s, libvdpau missing\n", __func__);
+                return;
+            }
+        }
+
+        int dlsym_failed = 0;
+        GET_SYMBOL(libvdpau_handle, vdp_device_create_x11);
+        if (dlsym_failed) {
+            dlclose(libvdpau_handle);
+            libvdpau_handle = NULL;
+            return;
+        }
+    }
 
     display.vdp_device = VDP_INVALID_HANDLE;
-    st = vdp_device_create_x11(display.x, DefaultScreen(display.x), &display.vdp_device,
+    VdpStatus st = vdp_device_create_x11(display.x, DefaultScreen(display.x), &display.vdp_device,
                                &display.vdp_get_proc_address);
 
     if (st == VDP_STATUS_OK && display.vdp_get_proc_address) {
@@ -324,7 +395,6 @@ deinitialize_vdpau(void)
         display.vdp_device = VDP_INVALID_HANDLE;
     }
 }
-#endif // HAVE_HWDEC
 
 int
 tables_open_display(void)
@@ -349,20 +419,35 @@ tables_open_display(void)
 
     display.dri_fd = open("/dev/dri/card0", O_RDWR);
 
-#if HAVE_HWDEC
-
     display.va_available = 0;
     display.vdpau_available = 0;
 
     if (config.enable_hwdec) {
-        if (config.enable_vaapi)
-            initialize_vaapi();
+        if (!libfreshffmpegwrapper_handle) {
+            if (!(libfreshffmpegwrapper_handle = dlopen("freshffmpegwrapper_62.so", RTLD_NOW | RTLD_LOCAL))) {              // ffmpeg 8
+                if (!(libfreshffmpegwrapper_handle = dlopen("freshffmpegwrapper_61.so", RTLD_NOW | RTLD_LOCAL))) {          // ffmpeg 7
+                    if (!(libfreshffmpegwrapper_handle = dlopen("freshffmpegwrapper_60.so", RTLD_NOW | RTLD_LOCAL))) {      // ffmpeg 6
+                        if (!(libfreshffmpegwrapper_handle = dlopen("freshffmpegwrapper_59.so", RTLD_NOW | RTLD_LOCAL))) {  // ffmpeg 5
+                            libfreshffmpegwrapper_handle = dlopen("freshffmpegwrapper_58.so", RTLD_NOW | RTLD_LOCAL);       // ffmpeg 4
+                        }
+                    }
+                }
+            }
 
-        if (config.enable_vdpau)
-            initialize_vdpau();
+            // the only method we need is the constructor, so no dlsyms
+        }
+
+        if (libfreshffmpegwrapper_handle) {
+            if (config.enable_vaapi)
+                initialize_vaapi();
+
+            if (config.enable_vdpau)
+                initialize_vdpau();
+        }
+        else {
+            trace_error("%s, could not open library binding to ffmpeg\n", __func__);
+        }
     }
-
-#endif // HAVE_HWDEC
 
     if (!glXQueryVersion(display.x, &major, &minor)) {
         trace_error("%s, glXQueryVersion returned False\n", __func__);
@@ -454,8 +539,6 @@ tables_close_display(void)
     pthread_mutex_lock(&display.lock);
     screensaver_disconnect();
 
-#if HAVE_HWDEC
-
     if (config.enable_hwdec) {
         if (config.enable_vaapi)
             deinitialize_vaapi();
@@ -463,8 +546,6 @@ tables_close_display(void)
         if (config.enable_vdpau)
             deinitialize_vdpau();
     }
-
-#endif // HAVE_HWDEC
 
     close(display.dri_fd);
     display.dri_fd = -1;

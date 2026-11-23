@@ -34,12 +34,9 @@
 #include <pango/pango.h>
 #include <pthread.h>
 #include <stdint.h>
-
-#if HAVE_HWDEC
 #include <va/va.h>
 #include <vdpau/vdpau.h>
 #include <vdpau/vdpau_x11.h>
-#endif // HAVE_HWDEC
 
 #define NPString_literal(str) { .UTF8Characters = str, .UTF8Length = strlen(str) }
 
@@ -63,7 +60,6 @@ typedef int
 
 struct display_s {
     Display                            *x;
-#if HAVE_HWDEC
     unsigned int                        va_available;
     VADisplay                           va;
     unsigned int                        vdpau_available;
@@ -87,8 +83,6 @@ struct display_s {
     VdpVideoMixerCreate                *vdp_video_mixer_create;
     VdpVideoMixerDestroy               *vdp_video_mixer_destroy;
     VdpVideoMixerRender                *vdp_video_mixer_render;
-
-#endif // HAVE_HWDEC
     Cursor                              transparent_cursor;
     pthread_mutexattr_t                 mutex_attr_recursive;
     pthread_mutex_t                     lock;
