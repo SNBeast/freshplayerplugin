@@ -45,6 +45,4 @@ for spec in \
     cp "libfreshffmpegwrapper_$CODEC_VER.so" ../artifact/
 done
 
-cp /tmp/sdk_62/lib/libpp_interface_resource_stub.so ../artifact/
-
 cd ..

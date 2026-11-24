@@ -226,7 +226,6 @@ pp_resource_unref(PP_Resource resource)
     }
 }
 
-__attribute__((visibility("default")))
 void
 register_resource(enum pp_resource_type_e type, void (*destructor)(void *ptr))
 {

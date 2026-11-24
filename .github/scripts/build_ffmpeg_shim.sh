@@ -59,34 +59,8 @@ void av_hwframe_ctx_alloc(void) {}
 void av_hwframe_ctx_init(void) {}
 EOF
 
-# and as well we need to ensure that the shim's constructor can see the two functions it calls
-
-cat << 'EOF' > "$SDK_DIR/pp_interface_resource_stub.c"
-char config[65536];
-char display[65536];
-void pp_resource_acquire(void) {}
-void pp_resource_allocate(void) {}
-void pp_resource_get_type(void) {}
-void pp_resource_ref(void) {}
-void pp_resource_release(void) {}
-void pp_resource_unref(void) {}
-void ppb_buffer_map(void) {}
-void ppb_buffer_unmap(void) {}
-void ppb_graphics3d_create(void) {}
-void ppb_message_loop_get_current(void) {}
-void ppb_message_loop_post_work_with_result(void) {}
-void ppp_get_interface(void) {}
-void register_interface(void) {}
-void register_resource(void) {}
-void tables_get_pp_instance(void) {}
-void trace_error(void) {}
-void trace_warning(void) {}
-EOF
-
 gcc -shared -fPIC -Wl,-soname,"$AVCODEC_SO" "$SDK_DIR/avcodec_stub.c" -o "$LIB_DIR/$AVCODEC_SO"
 gcc -shared -fPIC -Wl,-soname,"$AVUTIL_SO"  "$SDK_DIR/avutil_stub.c"  -o "$LIB_DIR/$AVUTIL_SO"
-
-gcc -shared -fPIC "$SDK_DIR/pp_interface_resource_stub.c" -o "$LIB_DIR/libpp_interface_resource_stub.so"
 
 ln -sf "$AVCODEC_SO" "$LIB_DIR/libavcodec.so"
 ln -sf "$AVUTIL_SO"  "$LIB_DIR/libavutil.so"

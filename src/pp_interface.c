@@ -49,7 +49,6 @@ ppb_get_interface(const char *interface_name)
     return NULL;
 }
 
-__attribute__((visibility("default")))
 void
 register_interface(const char *name, const void *implementation)
 {

@@ -134,12 +134,12 @@ if(BUILD_FFMPEG_SHIM)
     add_library(freshffmpegwrapper_${AVCODEC_MAJOR} SHARED ppb_video_decoder.c)
     target_include_directories(freshffmpegwrapper_${AVCODEC_MAJOR} PRIVATE "${FFMPEG_SDK_DIR}/include")
     target_link_directories(freshffmpegwrapper_${AVCODEC_MAJOR} PRIVATE "${FFMPEG_SDK_DIR}/lib")
-    target_link_libraries(freshffmpegwrapper_${AVCODEC_MAJOR} PRIVATE avcodec avutil ${REQ_LIBRARIES} "${FFMPEG_SDK_DIR}/lib/libpp_interface_resource_stub.so")
+    target_link_libraries(freshffmpegwrapper_${AVCODEC_MAJOR} PRIVATE avcodec avutil ${REQ_LIBRARIES})
 
     set_target_properties(freshffmpegwrapper_${AVCODEC_MAJOR} PROPERTIES
         SKIP_BUILD_RPATH TRUE
         INSTALL_RPATH ""
         C_VISIBILITY_PRESET hidden
     )
-    target_link_options(freshffmpegwrapper_${AVCODEC_MAJOR} PRIVATE "-Wl,--no-undefined" "-Wl,--as-needed")
+    target_link_options(freshffmpegwrapper_${AVCODEC_MAJOR} PRIVATE "-Wl,--as-needed")
 endif()

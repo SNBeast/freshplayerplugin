@@ -104,10 +104,12 @@ struct display_s {
 };
 
 extern NPNetscapeFuncs  npn;
+__attribute__((visibility("default")))
 extern struct display_s display;
 
 int         tables_get_urandom_fd(void);
 
+__attribute__((visibility("default")))
 struct pp_instance_s   *tables_get_pp_instance(PP_Instance instance);
 void                    tables_add_pp_instance(PP_Instance instance, struct pp_instance_s *pp_i);
 void                    tables_remove_pp_instance(PP_Instance instance);

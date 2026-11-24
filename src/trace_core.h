@@ -47,7 +47,9 @@
 
 
 void    trace_info(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
+__attribute__((visibility("default")))
 void    trace_warning(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
+__attribute__((visibility("default")))
 void    trace_error(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
 
 void    trace_duration_tic(void);

@@ -425,7 +425,10 @@ tables_open_display(void)
     if (config.enable_hwdec) {
         if (!libfreshffmpegwrapper_handle) {
             Dl_info dl_info;
-            if (dladdr((void*)tables_open_display, &dl_info) && dl_info.dli_fname) {
+            if (dladdr((void*)tables_get_pp_instance, &dl_info) && dl_info.dli_fname) {
+                // expose our default-visibility exports for the wrapper to grab
+                dlopen(dl_info.dli_fname, RTLD_NOW | RTLD_NOLOAD | RTLD_GLOBAL);
+
                 char* dir = g_path_get_dirname(dl_info.dli_fname);
                 char* path = g_strdup_printf("%s/%s", dir, "freshffmpegwrapper_62.so");             // ffmpeg 8
                 if (!(libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL))) {

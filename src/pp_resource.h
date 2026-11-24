@@ -83,14 +83,21 @@ struct pp_instance_s;
     PP_Resource             self_id;            \
     pthread_mutex_t         lock;
 
+__attribute__((visibility("default")))
 PP_Resource             pp_resource_allocate(enum pp_resource_type_e type,
                                              struct pp_instance_s *instance);
 void                    pp_resource_expunge(PP_Resource resource);
+__attribute__((visibility("default")))
 void                   *pp_resource_acquire(PP_Resource resource, enum pp_resource_type_e type);
+__attribute__((visibility("default")))
 void                    pp_resource_release(PP_Resource resource);
+__attribute__((visibility("default")))
 enum pp_resource_type_e pp_resource_get_type(PP_Resource resource);
+__attribute__((visibility("default")))
 PP_Resource             pp_resource_ref(PP_Resource resource);
+__attribute__((visibility("default")))
 void                    pp_resource_unref(PP_Resource resource);
 
+__attribute__((visibility("default")))
 void                    register_resource(enum pp_resource_type_e type,
                                           void (*destructor)(void *ptr));
