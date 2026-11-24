@@ -15,8 +15,10 @@ jobs:
     - uses: gatk555/arm-runner-action@v2
       name: Build inside chroot
       with:
-        commands: sudo .github/scripts/build.sh
+        base_image: raspi_2_bullseye:20230102
+        commands: .github/scripts/build_bullseye.sh
         copy_artifact_path: artifact
+        cpu: cortex-a7
         image_additional_mb: 2048
     - name: Upload Artifacts
       uses: actions/upload-artifact@master
@@ -32,15 +34,15 @@ jobs:
         docker run --rm \
         --security-opt seccomp=unconfined \
         -v "${{ github.workspace }}:/work" \
-        -w /work i386/debian:trixie \
-        bash -c ".github/scripts/build.sh"
+        -w /work i386/debian:bullseye \
+        bash -c ".github/scripts/build_bullseye.sh"
     - name: Upload Artifacts
       uses: actions/upload-artifact@master
       with:
         name: artifact-ia32
         path: artifact
   x64-build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v7
     - name: Build
