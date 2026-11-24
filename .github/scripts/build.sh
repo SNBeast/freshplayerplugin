@@ -20,6 +20,7 @@ make
 mkdir ../artifact
 cp libfreshwrapper-flashplayer.so ../artifact/
 
+mkdir ../artifact/libfreshffmpegwrapper
 for spec in \
     "4.4.5:58:56" \
     "5.1.6:59:57" \
@@ -42,7 +43,7 @@ for spec in \
         -DAVCODEC_MAJOR="$CODEC_VER" -DFFMPEG_SDK_DIR="$SDK_DIR" \
         ..
     make
-    cp "libfreshffmpegwrapper_$CODEC_VER.so" ../artifact/
+    cp "libfreshffmpegwrapper_$CODEC_VER.so" ../artifact/libfreshffmpegwrapper/
 done
 
 cd ..
