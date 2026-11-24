@@ -116,7 +116,7 @@ if(BUILD_MAIN_LIB)
     set(WITH_PEPPERFLASH TRUE CACHE STRING "generate wrapper for PepperFlash")
     if (WITH_PEPPERFLASH)
         add_library(freshwrapper-flashplayer SHARED ${COMMON_OBJ_LIST} config_pepperflash.c)
-        target_link_libraries(freshwrapper-flashplayer ${SYMBOLMAP} ${REQ_LIBRARIES})
+        target_link_libraries(freshwrapper-flashplayer ${REQ_LIBRARIES})
         target_link_options(freshwrapper-flashplayer PRIVATE
             "-Wl,--exclude-libs,libcrypto.a"
             "-Wl,--exclude-libs,libevent.a"

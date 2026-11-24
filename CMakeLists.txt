@@ -1,5 +1,5 @@
-project(freshplayerplugin)
 cmake_minimum_required(VERSION 3.15)
+project(freshplayerplugin)
 
 # version
 set(VER_MAJOR 0)
@@ -132,8 +132,6 @@ if(BUILD_MAIN_LIB)
         include_directories(3rdparty/angle/include)
         list(APPEND REQ_LIBRARIES shader_translator)
     endif()
-
-    set(SYMBOLMAP "-Wl,-version-script=\"${CMAKE_SOURCE_DIR}/src/symbolmap\"")
 
     add_subdirectory(3rdparty)
     add_subdirectory(src)
