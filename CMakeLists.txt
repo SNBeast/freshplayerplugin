@@ -48,14 +48,11 @@ pkg_check_modules(REQ
     xcursor
     gl
     libdrm
-    libevent
-    libevent_pthreads
     cairo
     pango
     pangocairo
     pangoft2
     freetype2
-    openssl
     REQUIRED)
 pkg_check_modules(DYLIB
     libpulse
@@ -67,16 +64,16 @@ pkg_check_modules(DYLIB
     libv4l2
     REQUIRED)
 
-    # merge glib-2.0
-    list(APPEND REQ_LIBRARY_DIRS ${GLIB_LIBRARY_DIRS})
-    list(APPEND REQ_INCLUDE_DIRS ${GLIB_INCLUDE_DIRS})
-    list(APPEND REQ_LIBRARIES    ${GLIB_LIBRARIES})
+# merge glib-2.0
+list(APPEND REQ_LIBRARY_DIRS ${GLIB_LIBRARY_DIRS})
+list(APPEND REQ_INCLUDE_DIRS ${GLIB_INCLUDE_DIRS})
+list(APPEND REQ_LIBRARIES    ${GLIB_LIBRARIES})
 
-    # merge dynamic dependencies
-    list(APPEND REQ_INCLUDE_DIRS ${DYLIB_INCLUDE_DIRS})
+# merge dynamic dependencies
+list(APPEND REQ_INCLUDE_DIRS ${DYLIB_INCLUDE_DIRS})
 
-    # libdl.so, librt.so, and libm.so
-    list(APPEND REQ_LIBRARIES ${CMAKE_DL_LIBS} rt m)
+# libdl.so, librt.so, and libm.so
+list(APPEND REQ_LIBRARIES ${CMAKE_DL_LIBS} rt m)
 
 # OpenGL ES 2
 set(WITH_GLES2 FALSE CACHE BOOLEAN "use system libGLESv2")
@@ -104,6 +101,32 @@ if(BUILD_MAIN_LIB)
                     "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}" ${VER_MAJOR}
                     ${VER_MINOR} ${VER_MICRO}
                     WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+    include(FetchContent)
+
+    set(OPENSSL_USE_STATIC_LIBS TRUE)
+    find_package(OpenSSL REQUIRED)
+
+    set(EVENT__LIBRARY_TYPE STATIC CACHE STRING "" FORCE)
+    set(EVENT__DISABLE_OPENSSL ON CACHE BOOL "" FORCE)
+    set(EVENT__DISABLE_BENCHMARK ON CACHE BOOL "" FORCE)
+    set(EVENT__DISABLE_TESTS ON CACHE BOOL "" FORCE)
+    set(EVENT__DISABLE_SAMPLES ON CACHE BOOL "" FORCE)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+    FetchContent_Declare(
+        libevent
+        GIT_REPOSITORY https://github.com/libevent/libevent
+        GIT_TAG        release-2.1.13-stable
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(libevent)
+
+    # merge openssl
+    list(APPEND REQ_LIBRARIES    OpenSSL::Crypto)
+
+    # merge libevent
+    list(APPEND REQ_LIBRARIES    event_pthreads_static event_extra_static event_core_static Threads::Threads)
 
     if (NOT WITH_GLES2)
         include_directories(3rdparty/angle/include)

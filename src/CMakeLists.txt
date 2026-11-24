@@ -117,6 +117,13 @@ if(BUILD_MAIN_LIB)
     if (WITH_PEPPERFLASH)
         add_library(freshwrapper-flashplayer SHARED ${COMMON_OBJ_LIST} config_pepperflash.c)
         target_link_libraries(freshwrapper-flashplayer ${SYMBOLMAP} ${REQ_LIBRARIES})
+        target_link_options(freshwrapper-flashplayer PRIVATE
+            "-Wl,--exclude-libs,libcrypto.a"
+            "-Wl,--exclude-libs,libevent.a"
+            "-Wl,--exclude-libs,libevent_core.a"
+            "-Wl,--exclude-libs,libevent_extra.a"
+            "-Wl,--exclude-libs,libevent_pthreads.a"
+        )
         target_link_libraries(dep_check freshwrapper-flashplayer)
         set_target_properties(freshwrapper-flashplayer PROPERTIES C_VISIBILITY_PRESET hidden)
         install(TARGETS freshwrapper-flashplayer DESTINATION ${MOZPLUGIN_INSTALL_DIR})
