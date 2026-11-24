@@ -129,7 +129,7 @@ ppb_video_capture_create(PP_Instance instance)
 {
     if (!v4l2_read) {
         int dlsym_failed = 0;
-        if (!(libv4l2_handle = dlopen("libv4l2.so.2", RTLD_LAZY | RTLD_LOCAL))) {
+        if (!(libv4l2_handle = dlopen("libv4l2.so.0", RTLD_LAZY | RTLD_LOCAL))) {
             if (!(libv4l2_handle = dlopen("libv4l2.so", RTLD_LAZY | RTLD_LOCAL))) {
                 dlsym_failed = 1;
             }
