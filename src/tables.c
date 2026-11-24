@@ -424,16 +424,30 @@ tables_open_display(void)
 
     if (config.enable_hwdec) {
         if (!libfreshffmpegwrapper_handle) {
-            if (!(libfreshffmpegwrapper_handle = dlopen("freshffmpegwrapper_62.so", RTLD_NOW | RTLD_LOCAL))) {              // ffmpeg 8
-                if (!(libfreshffmpegwrapper_handle = dlopen("freshffmpegwrapper_61.so", RTLD_NOW | RTLD_LOCAL))) {          // ffmpeg 7
-                    if (!(libfreshffmpegwrapper_handle = dlopen("freshffmpegwrapper_60.so", RTLD_NOW | RTLD_LOCAL))) {      // ffmpeg 6
-                        if (!(libfreshffmpegwrapper_handle = dlopen("freshffmpegwrapper_59.so", RTLD_NOW | RTLD_LOCAL))) {  // ffmpeg 5
-                            libfreshffmpegwrapper_handle = dlopen("freshffmpegwrapper_58.so", RTLD_NOW | RTLD_LOCAL);       // ffmpeg 4
+            Dl_info dl_info;
+            if (dladdr((void*)tables_open_display, &dl_info) && dl_info.dli_fname) {
+                char* dir = g_path_get_dirname(dl_info.dli_fname);
+                char* path = g_strdup_printf("%s/%s", dir, "freshffmpegwrapper_62.so");             // ffmpeg 8
+                if (!(libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL))) {
+                    g_free(path);
+                    path = g_strdup_printf("%s/%s", dir, "freshffmpegwrapper_61.so");               // ffmpeg 7
+                    if (!(libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL))) {
+                        g_free(path);
+                        path = g_strdup_printf("%s/%s", dir, "freshffmpegwrapper_60.so");           // ffmpeg 6
+                        if (!(libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL))) {
+                            g_free(path);
+                            path = g_strdup_printf("%s/%s", dir, "freshffmpegwrapper_59.so");       // ffmpeg 5
+                            if (!(libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL))) {
+                                g_free(path);
+                                path = g_strdup_printf("%s/%s", dir, "freshffmpegwrapper_58.so");   // ffmpeg 4
+                                libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+                            }
                         }
                     }
                 }
+                g_free(path);
+                g_free(dir);
             }
-
             // the only method we need is the constructor, so no dlsyms
         }
 
