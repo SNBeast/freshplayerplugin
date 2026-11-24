@@ -430,19 +430,19 @@ tables_open_display(void)
                 dlopen(dl_info.dli_fname, RTLD_NOW | RTLD_NOLOAD | RTLD_GLOBAL);
 
                 char* dir = g_path_get_dirname(dl_info.dli_fname);
-                char* path = g_strdup_printf("%s/%s", dir, "freshffmpegwrapper_62.so");             // ffmpeg 8
+                char* path = g_strdup_printf("%s/%s", dir, "libfreshffmpegwrapper_62.so");              // ffmpeg 8
                 if (!(libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL))) {
                     g_free(path);
-                    path = g_strdup_printf("%s/%s", dir, "freshffmpegwrapper_61.so");               // ffmpeg 7
+                    path = g_strdup_printf("%s/%s", dir, "libfreshffmpegwrapper_61.so");                // ffmpeg 7
                     if (!(libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL))) {
                         g_free(path);
-                        path = g_strdup_printf("%s/%s", dir, "freshffmpegwrapper_60.so");           // ffmpeg 6
+                        path = g_strdup_printf("%s/%s", dir, "libfreshffmpegwrapper_60.so");            // ffmpeg 6
                         if (!(libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL))) {
                             g_free(path);
-                            path = g_strdup_printf("%s/%s", dir, "freshffmpegwrapper_59.so");       // ffmpeg 5
+                            path = g_strdup_printf("%s/%s", dir, "libfreshffmpegwrapper_59.so");        // ffmpeg 5
                             if (!(libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL))) {
                                 g_free(path);
-                                path = g_strdup_printf("%s/%s", dir, "freshffmpegwrapper_58.so");   // ffmpeg 4
+                                path = g_strdup_printf("%s/%s", dir, "libfreshffmpegwrapper_58.so");    // ffmpeg 4
                                 libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
                             }
                         }
