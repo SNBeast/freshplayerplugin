@@ -51,41 +51,41 @@ do {                                                    \
     }                                                   \
 } while (0)
 
-typeof(snd_card_get_longname) *d_snd_card_get_longname;
-typeof(snd_card_get_name) *d_snd_card_get_name;
-typeof(snd_card_next) *d_snd_card_next;
-typeof(snd_device_name_free_hint) *d_snd_device_name_free_hint;
-typeof(snd_device_name_get_hint) *d_snd_device_name_get_hint;
-typeof(snd_device_name_hint) *d_snd_device_name_hint;
-typeof(snd_pcm_avail) *d_snd_pcm_avail;
-typeof(snd_pcm_close) *d_snd_pcm_close;
-typeof(snd_pcm_drop) *d_snd_pcm_drop;
-typeof(snd_pcm_hw_params) *d_snd_pcm_hw_params;
-typeof(snd_pcm_hw_params_any) *d_snd_pcm_hw_params_any;
-typeof(snd_pcm_hw_params_free) *d_snd_pcm_hw_params_free;
-typeof(snd_pcm_hw_params_get_buffer_time) *d_snd_pcm_hw_params_get_buffer_time;
-typeof(snd_pcm_hw_params_malloc) *d_snd_pcm_hw_params_malloc;
-typeof(snd_pcm_hw_params_set_access) *d_snd_pcm_hw_params_set_access;
-typeof(snd_pcm_hw_params_set_buffer_time_near) *d_snd_pcm_hw_params_set_buffer_time_near;
-typeof(snd_pcm_hw_params_set_channels) *d_snd_pcm_hw_params_set_channels;
-typeof(snd_pcm_hw_params_set_format) *d_snd_pcm_hw_params_set_format;
-typeof(snd_pcm_hw_params_set_period_time_near) *d_snd_pcm_hw_params_set_period_time_near;
-typeof(snd_pcm_hw_params_set_rate_near) *d_snd_pcm_hw_params_set_rate_near;
-typeof(snd_pcm_open) *d_snd_pcm_open;
-typeof(snd_pcm_poll_descriptors) *d_snd_pcm_poll_descriptors;
-typeof(snd_pcm_poll_descriptors_count) *d_snd_pcm_poll_descriptors_count;
-typeof(snd_pcm_poll_descriptors_revents) *d_snd_pcm_poll_descriptors_revents;
-typeof(snd_pcm_prepare) *d_snd_pcm_prepare;
-typeof(snd_pcm_readi) *d_snd_pcm_readi;
-typeof(snd_pcm_recover) *d_snd_pcm_recover;
-typeof(snd_pcm_start) *d_snd_pcm_start;
-typeof(snd_pcm_state) *d_snd_pcm_state;
-typeof(snd_pcm_sw_params) *d_snd_pcm_sw_params;
-typeof(snd_pcm_sw_params_current) *d_snd_pcm_sw_params_current;
-typeof(snd_pcm_sw_params_free) *d_snd_pcm_sw_params_free;
-typeof(snd_pcm_sw_params_malloc) *d_snd_pcm_sw_params_malloc;
-typeof(snd_pcm_writei) *d_snd_pcm_writei;
-typeof(snd_strerror) *d_snd_strerror;
+static typeof(snd_card_get_longname) *d_snd_card_get_longname;
+static typeof(snd_card_get_name) *d_snd_card_get_name;
+static typeof(snd_card_next) *d_snd_card_next;
+static typeof(snd_device_name_free_hint) *d_snd_device_name_free_hint;
+static typeof(snd_device_name_get_hint) *d_snd_device_name_get_hint;
+static typeof(snd_device_name_hint) *d_snd_device_name_hint;
+static typeof(snd_pcm_avail) *d_snd_pcm_avail;
+static typeof(snd_pcm_close) *d_snd_pcm_close;
+static typeof(snd_pcm_drop) *d_snd_pcm_drop;
+static typeof(snd_pcm_hw_params) *d_snd_pcm_hw_params;
+static typeof(snd_pcm_hw_params_any) *d_snd_pcm_hw_params_any;
+static typeof(snd_pcm_hw_params_free) *d_snd_pcm_hw_params_free;
+static typeof(snd_pcm_hw_params_get_buffer_time) *d_snd_pcm_hw_params_get_buffer_time;
+static typeof(snd_pcm_hw_params_malloc) *d_snd_pcm_hw_params_malloc;
+static typeof(snd_pcm_hw_params_set_access) *d_snd_pcm_hw_params_set_access;
+static typeof(snd_pcm_hw_params_set_buffer_time_near) *d_snd_pcm_hw_params_set_buffer_time_near;
+static typeof(snd_pcm_hw_params_set_channels) *d_snd_pcm_hw_params_set_channels;
+static typeof(snd_pcm_hw_params_set_format) *d_snd_pcm_hw_params_set_format;
+static typeof(snd_pcm_hw_params_set_period_time_near) *d_snd_pcm_hw_params_set_period_time_near;
+static typeof(snd_pcm_hw_params_set_rate_near) *d_snd_pcm_hw_params_set_rate_near;
+static typeof(snd_pcm_open) *d_snd_pcm_open;
+static typeof(snd_pcm_poll_descriptors) *d_snd_pcm_poll_descriptors;
+static typeof(snd_pcm_poll_descriptors_count) *d_snd_pcm_poll_descriptors_count;
+static typeof(snd_pcm_poll_descriptors_revents) *d_snd_pcm_poll_descriptors_revents;
+static typeof(snd_pcm_prepare) *d_snd_pcm_prepare;
+static typeof(snd_pcm_readi) *d_snd_pcm_readi;
+static typeof(snd_pcm_recover) *d_snd_pcm_recover;
+static typeof(snd_pcm_start) *d_snd_pcm_start;
+static typeof(snd_pcm_state) *d_snd_pcm_state;
+static typeof(snd_pcm_sw_params) *d_snd_pcm_sw_params;
+static typeof(snd_pcm_sw_params_current) *d_snd_pcm_sw_params_current;
+static typeof(snd_pcm_sw_params_free) *d_snd_pcm_sw_params_free;
+static typeof(snd_pcm_sw_params_malloc) *d_snd_pcm_sw_params_malloc;
+static typeof(snd_pcm_writei) *d_snd_pcm_writei;
+static typeof(snd_strerror) *d_snd_strerror;
 
 #define snd_card_get_longname d_snd_card_get_longname
 #define snd_card_get_name d_snd_card_get_name

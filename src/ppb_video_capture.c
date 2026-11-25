@@ -62,10 +62,10 @@ do {                                                    \
     }                                                   \
 } while (0)
 
-ssize_t (*d_v4l2_read)(int fd, void *buffer, size_t n);
-int (*d_v4l2_open)(const char *filename, int oflag);
-int (*d_v4l2_close)(int fd);
-int (*d_v4l2_ioctl)(int fd, unsigned long int request, void *data);
+static ssize_t (*d_v4l2_read)(int fd, void *buffer, size_t n);
+static int (*d_v4l2_open)(const char *filename, int oflag);
+static int (*d_v4l2_close)(int fd);
+static int (*d_v4l2_ioctl)(int fd, unsigned long int request, void *data);
 
 #define v4l2_read d_v4l2_read
 #define v4l2_open d_v4l2_open

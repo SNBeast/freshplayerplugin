@@ -22,11 +22,12 @@ cp libfreshwrapper-flashplayer.so ../artifact/
 
 mkdir ../artifact/libfreshffmpegwrapper
 for spec in \
-    "4.4.5:58:56" \
-    "5.1.6:59:57" \
-    "6.1.2:60:58" \
-    "7.1.1:61:59" \
-    "8.0:62:60"; do
+    "4.4.8:58:56" \
+    "5.1.10:59:57" \
+    "6.1.6:60:58" \
+    "7.1.5:61:59" \
+    "8.1.3:62:60" \
+    "9.1:63:61"; do
 
     IFS=":" read -r FF_VER CODEC_VER UTIL_VER <<< "$spec"
     SDK_DIR="/tmp/sdk_$CODEC_VER"

@@ -45,39 +45,39 @@ do {                                                    \
     }                                                   \
 } while (0)
 
-typeof(pa_context_connect) *d_pa_context_connect;
-typeof(pa_context_disconnect) *d_pa_context_disconnect;
-typeof(pa_context_get_state) *d_pa_context_get_state;
-typeof(pa_context_new) *d_pa_context_new;
-typeof(pa_context_set_state_callback) *d_pa_context_set_state_callback;
-typeof(pa_context_unref) *d_pa_context_unref;
-typeof(pa_frame_size) *d_pa_frame_size;
-typeof(pa_operation_get_state) *d_pa_operation_get_state;
-typeof(pa_operation_unref) *d_pa_operation_unref;
-typeof(pa_stream_begin_write) *d_pa_stream_begin_write;
-typeof(pa_stream_connect_playback) *d_pa_stream_connect_playback;
-typeof(pa_stream_connect_record) *d_pa_stream_connect_record;
-typeof(pa_stream_cork) *d_pa_stream_cork;
-typeof(pa_stream_disconnect) *d_pa_stream_disconnect;
-typeof(pa_stream_drop) *d_pa_stream_drop;
-typeof(pa_stream_get_state) *d_pa_stream_get_state;
-typeof(pa_stream_new) *d_pa_stream_new;
-typeof(pa_stream_peek) *d_pa_stream_peek;
-typeof(pa_stream_set_latency_update_callback) *d_pa_stream_set_latency_update_callback;
-typeof(pa_stream_set_read_callback) *d_pa_stream_set_read_callback;
-typeof(pa_stream_set_state_callback) *d_pa_stream_set_state_callback;
-typeof(pa_stream_set_write_callback) *d_pa_stream_set_write_callback;
-typeof(pa_stream_unref) *d_pa_stream_unref;
-typeof(pa_stream_write) *d_pa_stream_write;
-typeof(pa_threaded_mainloop_free) *d_pa_threaded_mainloop_free;
-typeof(pa_threaded_mainloop_get_api) *d_pa_threaded_mainloop_get_api;
-typeof(pa_threaded_mainloop_lock) *d_pa_threaded_mainloop_lock;
-typeof(pa_threaded_mainloop_new) *d_pa_threaded_mainloop_new;
-typeof(pa_threaded_mainloop_signal) *d_pa_threaded_mainloop_signal;
-typeof(pa_threaded_mainloop_start) *d_pa_threaded_mainloop_start;
-typeof(pa_threaded_mainloop_stop) *d_pa_threaded_mainloop_stop;
-typeof(pa_threaded_mainloop_unlock) *d_pa_threaded_mainloop_unlock;
-typeof(pa_threaded_mainloop_wait) *d_pa_threaded_mainloop_wait;
+static typeof(pa_context_connect) *d_pa_context_connect;
+static typeof(pa_context_disconnect) *d_pa_context_disconnect;
+static typeof(pa_context_get_state) *d_pa_context_get_state;
+static typeof(pa_context_new) *d_pa_context_new;
+static typeof(pa_context_set_state_callback) *d_pa_context_set_state_callback;
+static typeof(pa_context_unref) *d_pa_context_unref;
+static typeof(pa_frame_size) *d_pa_frame_size;
+static typeof(pa_operation_get_state) *d_pa_operation_get_state;
+static typeof(pa_operation_unref) *d_pa_operation_unref;
+static typeof(pa_stream_begin_write) *d_pa_stream_begin_write;
+static typeof(pa_stream_connect_playback) *d_pa_stream_connect_playback;
+static typeof(pa_stream_connect_record) *d_pa_stream_connect_record;
+static typeof(pa_stream_cork) *d_pa_stream_cork;
+static typeof(pa_stream_disconnect) *d_pa_stream_disconnect;
+static typeof(pa_stream_drop) *d_pa_stream_drop;
+static typeof(pa_stream_get_state) *d_pa_stream_get_state;
+static typeof(pa_stream_new) *d_pa_stream_new;
+static typeof(pa_stream_peek) *d_pa_stream_peek;
+static typeof(pa_stream_set_latency_update_callback) *d_pa_stream_set_latency_update_callback;
+static typeof(pa_stream_set_read_callback) *d_pa_stream_set_read_callback;
+static typeof(pa_stream_set_state_callback) *d_pa_stream_set_state_callback;
+static typeof(pa_stream_set_write_callback) *d_pa_stream_set_write_callback;
+static typeof(pa_stream_unref) *d_pa_stream_unref;
+static typeof(pa_stream_write) *d_pa_stream_write;
+static typeof(pa_threaded_mainloop_free) *d_pa_threaded_mainloop_free;
+static typeof(pa_threaded_mainloop_get_api) *d_pa_threaded_mainloop_get_api;
+static typeof(pa_threaded_mainloop_lock) *d_pa_threaded_mainloop_lock;
+static typeof(pa_threaded_mainloop_new) *d_pa_threaded_mainloop_new;
+static typeof(pa_threaded_mainloop_signal) *d_pa_threaded_mainloop_signal;
+static typeof(pa_threaded_mainloop_start) *d_pa_threaded_mainloop_start;
+static typeof(pa_threaded_mainloop_stop) *d_pa_threaded_mainloop_stop;
+static typeof(pa_threaded_mainloop_unlock) *d_pa_threaded_mainloop_unlock;
+static typeof(pa_threaded_mainloop_wait) *d_pa_threaded_mainloop_wait;
 
 #define pa_context_connect d_pa_context_connect
 #define pa_context_disconnect d_pa_context_disconnect

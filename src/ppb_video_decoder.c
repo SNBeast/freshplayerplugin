@@ -66,9 +66,9 @@ do {                                                    \
     }                                                   \
 } while (0)
 
-typeof(vaCreateSurfaces) *d_vaCreateSurfaces;
-typeof(vaDestroySurfaces) *d_vaDestroySurfaces;
-typeof(vaPutSurface) *d_vaPutSurface;
+static typeof(vaCreateSurfaces) *d_vaCreateSurfaces;
+static typeof(vaDestroySurfaces) *d_vaDestroySurfaces;
+static typeof(vaPutSurface) *d_vaPutSurface;
 
 #define vaCreateSurfaces d_vaCreateSurfaces
 #define vaDestroySurfaces d_vaDestroySurfaces

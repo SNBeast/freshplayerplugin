@@ -53,27 +53,27 @@ do {                                                    \
     }                                                   \
 } while (0)
 
-typeof(jack_activate) *d_jack_activate;
-typeof(jack_client_close) *d_jack_client_close;
-typeof(jack_client_open) *d_jack_client_open;
-typeof(jack_connect) *d_jack_connect;
-typeof(jack_free) *d_jack_free;
-typeof(jack_get_ports) *d_jack_get_ports;
-typeof(jack_get_sample_rate) *d_jack_get_sample_rate;
-typeof(jack_port_get_buffer) *d_jack_port_get_buffer;
-typeof(jack_port_name) *d_jack_port_name;
-typeof(jack_port_register) *d_jack_port_register;
-typeof(jack_ringbuffer_create) *d_jack_ringbuffer_create;
-typeof(jack_ringbuffer_free) *d_jack_ringbuffer_free;
-typeof(jack_ringbuffer_read) *d_jack_ringbuffer_read;
-typeof(jack_ringbuffer_read_space) *d_jack_ringbuffer_read_space;
-typeof(jack_ringbuffer_write) *d_jack_ringbuffer_write;
-typeof(jack_set_process_callback) *d_jack_set_process_callback;
-typeof(soxr_delete) *d_soxr_delete;
-typeof(soxr_create) *d_soxr_create;
-typeof(soxr_io_spec) *d_soxr_io_spec;
-typeof(soxr_process) *d_soxr_process;
-typeof(soxr_quality_spec) *d_soxr_quality_spec;
+static typeof(jack_activate) *d_jack_activate;
+static typeof(jack_client_close) *d_jack_client_close;
+static typeof(jack_client_open) *d_jack_client_open;
+static typeof(jack_connect) *d_jack_connect;
+static typeof(jack_free) *d_jack_free;
+static typeof(jack_get_ports) *d_jack_get_ports;
+static typeof(jack_get_sample_rate) *d_jack_get_sample_rate;
+static typeof(jack_port_get_buffer) *d_jack_port_get_buffer;
+static typeof(jack_port_name) *d_jack_port_name;
+static typeof(jack_port_register) *d_jack_port_register;
+static typeof(jack_ringbuffer_create) *d_jack_ringbuffer_create;
+static typeof(jack_ringbuffer_free) *d_jack_ringbuffer_free;
+static typeof(jack_ringbuffer_read) *d_jack_ringbuffer_read;
+static typeof(jack_ringbuffer_read_space) *d_jack_ringbuffer_read_space;
+static typeof(jack_ringbuffer_write) *d_jack_ringbuffer_write;
+static typeof(jack_set_process_callback) *d_jack_set_process_callback;
+static typeof(soxr_delete) *d_soxr_delete;
+static typeof(soxr_create) *d_soxr_create;
+static typeof(soxr_io_spec) *d_soxr_io_spec;
+static typeof(soxr_process) *d_soxr_process;
+static typeof(soxr_quality_spec) *d_soxr_quality_spec;
 
 #define jack_activate d_jack_activate
 #define jack_client_close d_jack_client_close

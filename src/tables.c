@@ -52,10 +52,10 @@ do {                                                    \
     }                                                   \
 } while (0)
 
-typeof(vaInitialize) *d_vaInitialize;
-typeof(vaTerminate) *d_vaTerminate;
-typeof(vaGetDisplay) *d_vaGetDisplay;
-typeof(vdp_device_create_x11) *d_vdp_device_create_x11;
+static typeof(vaInitialize) *d_vaInitialize;
+static typeof(vaTerminate) *d_vaTerminate;
+static typeof(vaGetDisplay) *d_vaGetDisplay;
+static typeof(vdp_device_create_x11) *d_vdp_device_create_x11;
 
 #define vaInitialize d_vaInitialize
 #define vaTerminate d_vaTerminate
