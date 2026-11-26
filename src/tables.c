@@ -54,11 +54,15 @@ do {                                                    \
 
 static typeof(vaInitialize) *d_vaInitialize;
 static typeof(vaTerminate) *d_vaTerminate;
+static typeof(vaQueryVendorString) *d_vaQueryVendorString;
+static typeof(vaErrorStr) *d_vaErrorStr;
 static typeof(vaGetDisplay) *d_vaGetDisplay;
 static typeof(vdp_device_create_x11) *d_vdp_device_create_x11;
 
 #define vaInitialize d_vaInitialize
 #define vaTerminate d_vaTerminate
+#define vaQueryVendorString d_vaQueryVendorString
+#define vaErrorStr d_vaErrorStr
 
 #define vaGetDisplay d_vaGetDisplay
 
@@ -274,6 +278,8 @@ initialize_vaapi(void)
         int dlsym_failed = 0;
         GET_SYMBOL(libva_handle, vaInitialize);
         GET_SYMBOL(libva_handle, vaTerminate);
+        GET_SYMBOL(libva_handle, vaQueryVendorString);
+        GET_SYMBOL(libva_handle, vaErrorStr);
         GET_SYMBOL(libva_x11_handle, vaGetDisplay);
         if (dlsym_failed) {
             dlclose(libva_handle);
