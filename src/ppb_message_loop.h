@@ -49,7 +49,6 @@ ppb_message_loop_get_for_browser_thread(void);
 int32_t
 ppb_message_loop_proclaim_this_thread_browser(void);
 
-__attribute__((visibility("default")))
 PP_Resource
 ppb_message_loop_get_current(void);
 
@@ -68,7 +67,6 @@ ppb_message_loop_run_int(PP_Resource message_loop, uint32_t flags);
 int32_t
 ppb_message_loop_run_nested(PP_Resource message_loop);
 
-__attribute__((visibility("default")))
 int32_t
 ppb_message_loop_post_work_with_result(PP_Resource message_loop,
                                        struct PP_CompletionCallback callback, int64_t delay_ms,

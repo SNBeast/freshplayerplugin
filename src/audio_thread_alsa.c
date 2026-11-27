@@ -22,8 +22,6 @@
  * SOFTWARE.
  */
 
-#define _GNU_SOURCE
-
 #include "audio_thread.h"
 #include "config.h"
 #include "eintr_retry.h"
@@ -32,7 +30,6 @@
 #include "trace_helpers.h"
 #include "utils.h"
 #include <alsa/asoundlib.h>
-#include <dlfcn.h>
 #include <errno.h>
 #include <glib.h>
 #include <poll.h>
@@ -41,89 +38,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
-#define GET_SYMBOL(handle, symname)                     \
-do {                                                    \
-    symname = dlsym(handle, #symname);                  \
-    if (symname == NULL) {                              \
-        trace_error("can't resolve " #symname "\n");    \
-        dlsym_failed = 1;                               \
-    }                                                   \
-} while (0)
-
-static typeof(snd_card_get_longname) *d_snd_card_get_longname;
-static typeof(snd_card_get_name) *d_snd_card_get_name;
-static typeof(snd_card_next) *d_snd_card_next;
-static typeof(snd_device_name_free_hint) *d_snd_device_name_free_hint;
-static typeof(snd_device_name_get_hint) *d_snd_device_name_get_hint;
-static typeof(snd_device_name_hint) *d_snd_device_name_hint;
-static typeof(snd_pcm_avail) *d_snd_pcm_avail;
-static typeof(snd_pcm_close) *d_snd_pcm_close;
-static typeof(snd_pcm_drop) *d_snd_pcm_drop;
-static typeof(snd_pcm_hw_params) *d_snd_pcm_hw_params;
-static typeof(snd_pcm_hw_params_any) *d_snd_pcm_hw_params_any;
-static typeof(snd_pcm_hw_params_free) *d_snd_pcm_hw_params_free;
-static typeof(snd_pcm_hw_params_get_buffer_time) *d_snd_pcm_hw_params_get_buffer_time;
-static typeof(snd_pcm_hw_params_malloc) *d_snd_pcm_hw_params_malloc;
-static typeof(snd_pcm_hw_params_set_access) *d_snd_pcm_hw_params_set_access;
-static typeof(snd_pcm_hw_params_set_buffer_time_near) *d_snd_pcm_hw_params_set_buffer_time_near;
-static typeof(snd_pcm_hw_params_set_channels) *d_snd_pcm_hw_params_set_channels;
-static typeof(snd_pcm_hw_params_set_format) *d_snd_pcm_hw_params_set_format;
-static typeof(snd_pcm_hw_params_set_period_time_near) *d_snd_pcm_hw_params_set_period_time_near;
-static typeof(snd_pcm_hw_params_set_rate_near) *d_snd_pcm_hw_params_set_rate_near;
-static typeof(snd_pcm_open) *d_snd_pcm_open;
-static typeof(snd_pcm_poll_descriptors) *d_snd_pcm_poll_descriptors;
-static typeof(snd_pcm_poll_descriptors_count) *d_snd_pcm_poll_descriptors_count;
-static typeof(snd_pcm_poll_descriptors_revents) *d_snd_pcm_poll_descriptors_revents;
-static typeof(snd_pcm_prepare) *d_snd_pcm_prepare;
-static typeof(snd_pcm_readi) *d_snd_pcm_readi;
-static typeof(snd_pcm_recover) *d_snd_pcm_recover;
-static typeof(snd_pcm_start) *d_snd_pcm_start;
-static typeof(snd_pcm_state) *d_snd_pcm_state;
-static typeof(snd_pcm_sw_params) *d_snd_pcm_sw_params;
-static typeof(snd_pcm_sw_params_current) *d_snd_pcm_sw_params_current;
-static typeof(snd_pcm_sw_params_free) *d_snd_pcm_sw_params_free;
-static typeof(snd_pcm_sw_params_malloc) *d_snd_pcm_sw_params_malloc;
-static typeof(snd_pcm_writei) *d_snd_pcm_writei;
-static typeof(snd_strerror) *d_snd_strerror;
-
-#define snd_card_get_longname d_snd_card_get_longname
-#define snd_card_get_name d_snd_card_get_name
-#define snd_card_next d_snd_card_next
-#define snd_device_name_free_hint d_snd_device_name_free_hint
-#define snd_device_name_get_hint d_snd_device_name_get_hint
-#define snd_device_name_hint d_snd_device_name_hint
-#define snd_pcm_avail d_snd_pcm_avail
-#define snd_pcm_close d_snd_pcm_close
-#define snd_pcm_drop d_snd_pcm_drop
-#define snd_pcm_hw_params d_snd_pcm_hw_params
-#define snd_pcm_hw_params_any d_snd_pcm_hw_params_any
-#define snd_pcm_hw_params_free d_snd_pcm_hw_params_free
-#define snd_pcm_hw_params_get_buffer_time d_snd_pcm_hw_params_get_buffer_time
-#define snd_pcm_hw_params_malloc d_snd_pcm_hw_params_malloc
-#define snd_pcm_hw_params_set_access d_snd_pcm_hw_params_set_access
-#define snd_pcm_hw_params_set_buffer_time_near d_snd_pcm_hw_params_set_buffer_time_near
-#define snd_pcm_hw_params_set_channels d_snd_pcm_hw_params_set_channels
-#define snd_pcm_hw_params_set_format d_snd_pcm_hw_params_set_format
-#define snd_pcm_hw_params_set_period_time_near d_snd_pcm_hw_params_set_period_time_near
-#define snd_pcm_hw_params_set_rate_near d_snd_pcm_hw_params_set_rate_near
-#define snd_pcm_open d_snd_pcm_open
-#define snd_pcm_poll_descriptors d_snd_pcm_poll_descriptors
-#define snd_pcm_poll_descriptors_count d_snd_pcm_poll_descriptors_count
-#define snd_pcm_poll_descriptors_revents d_snd_pcm_poll_descriptors_revents
-#define snd_pcm_prepare d_snd_pcm_prepare
-#define snd_pcm_readi d_snd_pcm_readi
-#define snd_pcm_recover d_snd_pcm_recover
-#define snd_pcm_start d_snd_pcm_start
-#define snd_pcm_state d_snd_pcm_state
-#define snd_pcm_sw_params d_snd_pcm_sw_params
-#define snd_pcm_sw_params_current d_snd_pcm_sw_params_current
-#define snd_pcm_sw_params_free d_snd_pcm_sw_params_free
-#define snd_pcm_sw_params_malloc d_snd_pcm_sw_params_malloc
-#define snd_pcm_writei d_snd_pcm_writei
-#define snd_strerror d_snd_strerror
-
-static void *libalsa_handle;
 
 struct audio_stream_s {
     audio_stream_direction      direction;
@@ -692,55 +606,6 @@ static
 int
 alsa_available(void)
 {
-    if (!libalsa_handle) {
-        if (!(libalsa_handle = dlopen("libasound.so.2", RTLD_LAZY | RTLD_LOCAL))) {
-            if (!(libalsa_handle = dlopen("libasound.so", RTLD_LAZY | RTLD_LOCAL))) {
-                return 0;
-            }
-        }
-        int dlsym_failed = 0;
-        GET_SYMBOL(libalsa_handle, snd_card_get_longname);
-        GET_SYMBOL(libalsa_handle, snd_card_get_name);
-        GET_SYMBOL(libalsa_handle, snd_card_next);
-        GET_SYMBOL(libalsa_handle, snd_device_name_free_hint);
-        GET_SYMBOL(libalsa_handle, snd_device_name_get_hint);
-        GET_SYMBOL(libalsa_handle, snd_device_name_hint);
-        GET_SYMBOL(libalsa_handle, snd_pcm_avail);
-        GET_SYMBOL(libalsa_handle, snd_pcm_close);
-        GET_SYMBOL(libalsa_handle, snd_pcm_drop);
-        GET_SYMBOL(libalsa_handle, snd_pcm_hw_params);
-        GET_SYMBOL(libalsa_handle, snd_pcm_hw_params_any);
-        GET_SYMBOL(libalsa_handle, snd_pcm_hw_params_free);
-        GET_SYMBOL(libalsa_handle, snd_pcm_hw_params_get_buffer_time);
-        GET_SYMBOL(libalsa_handle, snd_pcm_hw_params_malloc);
-        GET_SYMBOL(libalsa_handle, snd_pcm_hw_params_set_access);
-        GET_SYMBOL(libalsa_handle, snd_pcm_hw_params_set_buffer_time_near);
-        GET_SYMBOL(libalsa_handle, snd_pcm_hw_params_set_channels);
-        GET_SYMBOL(libalsa_handle, snd_pcm_hw_params_set_format);
-        GET_SYMBOL(libalsa_handle, snd_pcm_hw_params_set_period_time_near);
-        GET_SYMBOL(libalsa_handle, snd_pcm_hw_params_set_rate_near);
-        GET_SYMBOL(libalsa_handle, snd_pcm_open);
-        GET_SYMBOL(libalsa_handle, snd_pcm_poll_descriptors);
-        GET_SYMBOL(libalsa_handle, snd_pcm_poll_descriptors_count);
-        GET_SYMBOL(libalsa_handle, snd_pcm_poll_descriptors_revents);
-        GET_SYMBOL(libalsa_handle, snd_pcm_prepare);
-        GET_SYMBOL(libalsa_handle, snd_pcm_readi);
-        GET_SYMBOL(libalsa_handle, snd_pcm_recover);
-        GET_SYMBOL(libalsa_handle, snd_pcm_start);
-        GET_SYMBOL(libalsa_handle, snd_pcm_state);
-        GET_SYMBOL(libalsa_handle, snd_pcm_sw_params);
-        GET_SYMBOL(libalsa_handle, snd_pcm_sw_params_current);
-        GET_SYMBOL(libalsa_handle, snd_pcm_sw_params_free);
-        GET_SYMBOL(libalsa_handle, snd_pcm_sw_params_malloc);
-        GET_SYMBOL(libalsa_handle, snd_pcm_writei);
-        GET_SYMBOL(libalsa_handle, snd_strerror);
-        if (dlsym_failed) {
-            dlclose(libalsa_handle);
-            libalsa_handle = NULL;
-            return 0;
-        }
-    }
-
     static int probed = 0;
     static int available = 0;
 

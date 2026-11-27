@@ -22,8 +22,6 @@
  * SOFTWARE.
  */
 
-#define _GNU_SOURCE
-
 #include "compat_glx_defines.h"
 #include "config.h"
 #include "glx.h"
@@ -41,7 +39,6 @@
 #include "utils.h"
 #include <GLES2/gl2.h>
 #include <X11/Xlib.h>
-#include <dlfcn.h>
 #include <glib.h>
 #include <libavcodec/avcodec.h>
 #include <libavcodec/vdpau.h>
@@ -56,27 +53,6 @@
 #include <va/va.h>
 #include <va/va_x11.h>
 #include <vdpau/vdpau.h>
-
-#define GET_SYMBOL(handle, symname)                     \
-do {                                                    \
-    symname = dlsym(handle, #symname);                  \
-    if (symname == NULL) {                              \
-        trace_error("can't resolve " #symname "\n");    \
-        dlsym_failed = 1;                               \
-    }                                                   \
-} while (0)
-
-static typeof(vaCreateSurfaces) *d_vaCreateSurfaces;
-static typeof(vaDestroySurfaces) *d_vaDestroySurfaces;
-static typeof(vaPutSurface) *d_vaPutSurface;
-
-#define vaCreateSurfaces d_vaCreateSurfaces
-#define vaDestroySurfaces d_vaDestroySurfaces
-
-#define vaPutSurface d_vaPutSurface
-
-static void *libva_handle;
-static void *libva_x11_handle;
 
 enum hwdec_api_e {
     HWDEC_NONE = 0,
@@ -595,36 +571,6 @@ ppb_video_decoder_create(PP_Instance instance, PP_Resource context, PP_VideoDeco
     if (!config.enable_hwdec) {
         trace_info_f("      hardware-accelerated decoding was disabled in config file\n");
         return 0;
-    }
-
-    if (!libva_handle) {
-        if (!(libva_handle = dlopen("libva.so.2", RTLD_LAZY | RTLD_LOCAL))) {
-            if (!(libva_handle = dlopen("libva.so", RTLD_LAZY | RTLD_LOCAL))) {
-                trace_error("%s, libva missing\n", __func__);
-                return 0;
-            }
-        }
-
-        if (!(libva_x11_handle = dlopen("libva-x11.so.2", RTLD_LAZY | RTLD_LOCAL))) {
-            if (!(libva_x11_handle = dlopen("libva-x11.so", RTLD_LAZY | RTLD_LOCAL))) {
-                trace_error("%s, libva-x11 missing\n", __func__);
-                dlclose(libva_handle);
-                libva_handle = NULL;
-                return 0;
-            }
-        }
-
-        int dlsym_failed = 0;
-        GET_SYMBOL(libva_handle, vaCreateSurfaces);
-        GET_SYMBOL(libva_handle, vaDestroySurfaces);
-        GET_SYMBOL(libva_x11_handle, vaPutSurface);
-        if (dlsym_failed) {
-            dlclose(libva_handle);
-            libva_handle = NULL;
-            dlclose(libva_x11_handle);
-            libva_x11_handle = NULL;
-            return 0;
-        }
     }
 
     if (!display.va_available && !display.vdpau_available) {

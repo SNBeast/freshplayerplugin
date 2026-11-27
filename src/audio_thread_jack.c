@@ -22,13 +22,10 @@
  * SOFTWARE.
  */
 
-#define _GNU_SOURCE
-
 #include "audio_thread.h"
 #include "config.h"
 #include "trace_core.h"
 #include "trace_helpers.h"
-#include <dlfcn.h>
 #include <glib.h>
 #include <jack/jack.h>
 #include <jack/ringbuffer.h>
@@ -44,62 +41,6 @@
 #define CMD_RESAMPLE_NEXT_CHUNK     ((void *)1)
 #define CMD_TERMINATE               ((void *)2)
 
-#define GET_SYMBOL(handle, symname)                     \
-do {                                                    \
-    symname = dlsym(handle, #symname);                  \
-    if (symname == NULL) {                              \
-        trace_error("can't resolve " #symname "\n");    \
-        dlsym_failed = 1;                               \
-    }                                                   \
-} while (0)
-
-static typeof(jack_activate) *d_jack_activate;
-static typeof(jack_client_close) *d_jack_client_close;
-static typeof(jack_client_open) *d_jack_client_open;
-static typeof(jack_connect) *d_jack_connect;
-static typeof(jack_free) *d_jack_free;
-static typeof(jack_get_ports) *d_jack_get_ports;
-static typeof(jack_get_sample_rate) *d_jack_get_sample_rate;
-static typeof(jack_port_get_buffer) *d_jack_port_get_buffer;
-static typeof(jack_port_name) *d_jack_port_name;
-static typeof(jack_port_register) *d_jack_port_register;
-static typeof(jack_ringbuffer_create) *d_jack_ringbuffer_create;
-static typeof(jack_ringbuffer_free) *d_jack_ringbuffer_free;
-static typeof(jack_ringbuffer_read) *d_jack_ringbuffer_read;
-static typeof(jack_ringbuffer_read_space) *d_jack_ringbuffer_read_space;
-static typeof(jack_ringbuffer_write) *d_jack_ringbuffer_write;
-static typeof(jack_set_process_callback) *d_jack_set_process_callback;
-static typeof(soxr_delete) *d_soxr_delete;
-static typeof(soxr_create) *d_soxr_create;
-static typeof(soxr_io_spec) *d_soxr_io_spec;
-static typeof(soxr_process) *d_soxr_process;
-static typeof(soxr_quality_spec) *d_soxr_quality_spec;
-
-#define jack_activate d_jack_activate
-#define jack_client_close d_jack_client_close
-#define jack_client_open d_jack_client_open
-#define jack_connect d_jack_connect
-#define jack_free d_jack_free
-#define jack_get_ports d_jack_get_ports
-#define jack_get_sample_rate d_jack_get_sample_rate
-#define jack_port_get_buffer d_jack_port_get_buffer
-#define jack_port_name d_jack_port_name
-#define jack_port_register d_jack_port_register
-#define jack_ringbuffer_create d_jack_ringbuffer_create
-#define jack_ringbuffer_free d_jack_ringbuffer_free
-#define jack_ringbuffer_read d_jack_ringbuffer_read
-#define jack_ringbuffer_read_space d_jack_ringbuffer_read_space
-#define jack_ringbuffer_write d_jack_ringbuffer_write
-#define jack_set_process_callback d_jack_set_process_callback
-
-#define soxr_delete d_soxr_delete
-#define soxr_create d_soxr_create
-#define soxr_io_spec d_soxr_io_spec
-#define soxr_process d_soxr_process
-#define soxr_quality_spec d_soxr_quality_spec
-
-static void *libjack_handle;
-static void *libsoxr_handle;
 
 struct audio_stream_s {
     audio_stream_playback_cb_f *playback_cb;
@@ -131,54 +72,7 @@ static
 int
 ja_available(void)
 {
-    if (config.audio_use_jack) {
-        if (!libjack_handle) {
-            if (!(libjack_handle = dlopen("libjack.so.0", RTLD_LAZY | RTLD_LOCAL))) {
-                if (!(libjack_handle = dlopen("libjack.so", RTLD_LAZY | RTLD_LOCAL))) {
-                    return 0;
-                }
-            }
-            if (!(libsoxr_handle = dlopen("libsoxr.so.0", RTLD_LAZY | RTLD_LOCAL))) {
-                if (!(libsoxr_handle = dlopen("libsoxr.so", RTLD_LAZY | RTLD_LOCAL))) {
-                    dlclose(libjack_handle);
-                    libjack_handle = NULL;
-                    return 0;
-                }
-            }
-
-            int dlsym_failed = 0;
-            GET_SYMBOL(libjack_handle, jack_activate);
-            GET_SYMBOL(libjack_handle, jack_client_close);
-            GET_SYMBOL(libjack_handle, jack_client_open);
-            GET_SYMBOL(libjack_handle, jack_connect);
-            GET_SYMBOL(libjack_handle, jack_free);
-            GET_SYMBOL(libjack_handle, jack_get_ports);
-            GET_SYMBOL(libjack_handle, jack_get_sample_rate);
-            GET_SYMBOL(libjack_handle, jack_port_get_buffer);
-            GET_SYMBOL(libjack_handle, jack_port_name);
-            GET_SYMBOL(libjack_handle, jack_port_register);
-            GET_SYMBOL(libjack_handle, jack_ringbuffer_create);
-            GET_SYMBOL(libjack_handle, jack_ringbuffer_free);
-            GET_SYMBOL(libjack_handle, jack_ringbuffer_read);
-            GET_SYMBOL(libjack_handle, jack_ringbuffer_read_space);
-            GET_SYMBOL(libjack_handle, jack_ringbuffer_write);
-            GET_SYMBOL(libjack_handle, jack_set_process_callback);
-            GET_SYMBOL(libsoxr_handle, soxr_delete);
-            GET_SYMBOL(libsoxr_handle, soxr_create);
-            GET_SYMBOL(libsoxr_handle, soxr_io_spec);
-            GET_SYMBOL(libsoxr_handle, soxr_process);
-            GET_SYMBOL(libsoxr_handle, soxr_quality_spec);
-            if (dlsym_failed) {
-                dlclose(libjack_handle);
-                libjack_handle = NULL;
-                dlclose(libsoxr_handle);
-                libsoxr_handle = NULL;
-                return 0;
-            }
-            return 1;
-        }
-    }
-    return 0;
+    return config.audio_use_jack;
 }
 
 static

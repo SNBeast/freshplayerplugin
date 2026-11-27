@@ -24,12 +24,10 @@
 
 #pragma once
 
-__attribute__((visibility("default")))
 extern const void *(*ppp_get_interface)(const char *interface_name);
 
 const void *
 ppb_get_interface(const char *interface_name);
 
-__attribute__((visibility("default")))
 void
 register_interface(const char *name, const void *implementation);

@@ -22,13 +22,15 @@ set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -DNDEBUG -g3")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g3")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g3")
 
-option(BUILD_MAIN_LIB "Build the main library" ON)
-option(BUILD_FFMPEG_SHIM "Build the FFmpeg plugin" ON)
-set(FFMPEG_SDK_DIR "" CACHE PATH "Path to FFmpeg SDK")
-set(AVCODEC_MAJOR "" CACHE STRING "Target libavcodec SONAME major version")
-
 # directory for auto-generated headers
 include_directories("${CMAKE_BINARY_DIR}")
+
+# determine software version
+add_custom_target(git-revision ALL
+                  COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/update-version-info.sh"
+                  "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}" ${VER_MAJOR}
+                  ${VER_MINOR} ${VER_MICRO}
+                  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # find Ragel
 find_program(RAGEL ragel)
@@ -41,6 +43,9 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLIB glib-2.0 REQUIRED)
 pkg_check_modules(REQ
     alsa
+    libpulse
+    jack
+    soxr
     gio-2.0
     x11
     xrandr
@@ -48,29 +53,23 @@ pkg_check_modules(REQ
     xcursor
     gl
     libdrm
+    libavcodec
+    libavutil
+    libva
+    libva-x11
+    vdpau
+    libv4l2
     cairo
     pango
     pangocairo
     pangoft2
     freetype2
     REQUIRED)
-pkg_check_modules(DYLIB
-    libpulse
-    jack
-    soxr
-    libva
-    libva-x11
-    vdpau
-    libv4l2
-    REQUIRED)
 
 # merge glib-2.0
 list(APPEND REQ_LIBRARY_DIRS ${GLIB_LIBRARY_DIRS})
 list(APPEND REQ_INCLUDE_DIRS ${GLIB_INCLUDE_DIRS})
 list(APPEND REQ_LIBRARIES    ${GLIB_LIBRARIES})
-
-# merge dynamic dependencies
-list(APPEND REQ_INCLUDE_DIRS ${DYLIB_INCLUDE_DIRS})
 
 # libdl.so, librt.so, and libm.so
 list(APPEND REQ_LIBRARIES ${CMAKE_DL_LIBS} rt m)
@@ -94,50 +93,39 @@ add_definitions(-DXP_UNIX)
 
 include_directories(3rdparty)
 
-if(BUILD_MAIN_LIB)
-    # determine software version
-    add_custom_target(git-revision ALL
-                    COMMAND sh "${CMAKE_SOURCE_DIR}/cmake/update-version-info.sh"
-                    "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}" ${VER_MAJOR}
-                    ${VER_MINOR} ${VER_MICRO}
-                    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+include(FetchContent)
 
-    include(FetchContent)
+set(OPENSSL_USE_STATIC_LIBS TRUE)
+find_package(OpenSSL REQUIRED)
 
-    set(OPENSSL_USE_STATIC_LIBS TRUE)
-    find_package(OpenSSL REQUIRED)
+set(EVENT__LIBRARY_TYPE STATIC CACHE STRING "" FORCE)
+set(EVENT__DISABLE_OPENSSL ON CACHE BOOL "" FORCE)
+set(EVENT__DISABLE_BENCHMARK ON CACHE BOOL "" FORCE)
+set(EVENT__DISABLE_TESTS ON CACHE BOOL "" FORCE)
+set(EVENT__DISABLE_SAMPLES ON CACHE BOOL "" FORCE)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-    set(EVENT__LIBRARY_TYPE STATIC CACHE STRING "" FORCE)
-    set(EVENT__DISABLE_OPENSSL ON CACHE BOOL "" FORCE)
-    set(EVENT__DISABLE_BENCHMARK ON CACHE BOOL "" FORCE)
-    set(EVENT__DISABLE_TESTS ON CACHE BOOL "" FORCE)
-    set(EVENT__DISABLE_SAMPLES ON CACHE BOOL "" FORCE)
-    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+FetchContent_Declare(
+    libevent
+    GIT_REPOSITORY https://github.com/libevent/libevent
+    GIT_TAG        release-2.1.13-stable
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(libevent)
 
-    FetchContent_Declare(
-        libevent
-        GIT_REPOSITORY https://github.com/libevent/libevent
-        GIT_TAG        release-2.1.13-stable
-        GIT_SHALLOW    TRUE
-    )
-    FetchContent_MakeAvailable(libevent)
+# merge openssl
+list(APPEND REQ_LIBRARIES    OpenSSL::Crypto)
 
-    # merge openssl
-    list(APPEND REQ_LIBRARIES    OpenSSL::Crypto)
+# merge libevent
+list(APPEND REQ_LIBRARIES    event_pthreads_static event_extra_static event_core_static Threads::Threads)
 
-    # merge libevent
-    list(APPEND REQ_LIBRARIES    event_pthreads_static event_extra_static event_core_static Threads::Threads)
-
-    if (NOT WITH_GLES2)
-        include_directories(3rdparty/angle/include)
-        list(APPEND REQ_LIBRARIES shader_translator)
-    endif()
-
-    add_subdirectory(3rdparty)
-    add_subdirectory(src)
-    add_subdirectory(tests)
+if (NOT WITH_GLES2)
+    include_directories(3rdparty/angle/include)
+    list(APPEND REQ_LIBRARIES shader_translator)
 endif()
 
-if(BUILD_FFMPEG_SHIM)
-    add_subdirectory(src)
-endif()
+set(SYMBOLMAP "-Wl,-version-script=\"${CMAKE_SOURCE_DIR}/src/symbolmap\"")
+
+add_subdirectory(3rdparty)
+add_subdirectory(src)
+add_subdirectory(tests)

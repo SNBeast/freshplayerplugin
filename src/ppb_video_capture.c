@@ -22,8 +22,6 @@
  * SOFTWARE.
  */
 
-#define _GNU_SOURCE
-
 #include "config.h"
 #include "eintr_retry.h"
 #include "pp_interface.h"
@@ -40,7 +38,6 @@
 #include "trace_core.h"
 #include "utils.h"
 #include <dirent.h>
-#include <dlfcn.h>
 #include <fcntl.h>
 #include <glib.h>
 #include <libv4l2.h>
@@ -52,27 +49,6 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
-
-#define GET_SYMBOL(handle, symname)                     \
-do {                                                    \
-    symname = dlsym(handle, #symname);                  \
-    if (symname == NULL) {                              \
-        trace_error("can't resolve " #symname "\n");    \
-        dlsym_failed = 1;                               \
-    }                                                   \
-} while (0)
-
-static ssize_t (*d_v4l2_read)(int fd, void *buffer, size_t n);
-static int (*d_v4l2_open)(const char *filename, int oflag);
-static int (*d_v4l2_close)(int fd);
-static int (*d_v4l2_ioctl)(int fd, unsigned long int request, void *data);
-
-#define v4l2_read d_v4l2_read
-#define v4l2_open d_v4l2_open
-#define v4l2_close d_v4l2_close
-#define v4l2_ioctl d_v4l2_ioctl
-
-static void *libv4l2_handle;
 
 struct pp_video_capture_s {
     COMMON_STRUCTURE_FIELDS
@@ -95,63 +71,9 @@ STATIC_ASSERT(sizeof(struct pp_video_capture_s) <= LARGEST_RESOURCE_SIZE);
 
 const char *default_capture_device = "/dev/video0";
 
-// define simple wrappers, if libv4l2 is not used
-static
-ssize_t
-sub_v4l2_read(int fd, void *buffer, size_t n)
-{
-    return read(fd, buffer, n);
-}
-
-static
-int
-sub_v4l2_open(const char *filename, int oflag)
-{
-    return open(filename, oflag);
-}
-
-static
-int
-sub_v4l2_close(int fd)
-{
-    return close(fd);
-}
-
-static
-int
-sub_v4l2_ioctl(int fd, unsigned long int request, void *data)
-{
-    return ioctl(fd, request, data);
-}
-
 PP_Resource
 ppb_video_capture_create(PP_Instance instance)
 {
-    if (!v4l2_read) {
-        int dlsym_failed = 0;
-        if (!(libv4l2_handle = dlopen("libv4l2.so.0", RTLD_LAZY | RTLD_LOCAL))) {
-            if (!(libv4l2_handle = dlopen("libv4l2.so", RTLD_LAZY | RTLD_LOCAL))) {
-                dlsym_failed = 1;
-            }
-        }
-        if (!dlsym_failed) {
-            GET_SYMBOL(libv4l2_handle, v4l2_read);
-            GET_SYMBOL(libv4l2_handle, v4l2_open);
-            GET_SYMBOL(libv4l2_handle, v4l2_close);
-            GET_SYMBOL(libv4l2_handle, v4l2_ioctl);
-            if (dlsym_failed) {
-                dlclose(libv4l2_handle);
-                libv4l2_handle = NULL;
-            }
-        }
-        if (dlsym_failed) {
-            v4l2_read = sub_v4l2_read;
-            v4l2_open = sub_v4l2_open;
-            v4l2_close = sub_v4l2_close;
-            v4l2_ioctl = sub_v4l2_ioctl;
-        }
-    }
-
     struct pp_instance_s *pp_i = tables_get_pp_instance(instance);
     if (!pp_i) {
         trace_error("%s, bad instance\n", __func__);

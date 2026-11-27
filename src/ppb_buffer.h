@@ -35,10 +35,8 @@ ppb_buffer_is_buffer(PP_Resource resource);
 PP_Bool
 ppb_buffer_describe(PP_Resource resource, uint32_t *size_in_bytes);
 
-__attribute__((visibility("default")))
 void *
 ppb_buffer_map(PP_Resource resource);
 
-__attribute__((visibility("default")))
 void
 ppb_buffer_unmap(PP_Resource resource);

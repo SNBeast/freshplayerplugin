@@ -22,13 +22,10 @@
  * SOFTWARE.
  */
 
-#define _GNU_SOURCE             // for dladdr()
-
 #include "config.h"
 #include "config_parser/config_parser.h"
 #include "config_priv.h"
 #include "trace_core.h"
-#include <dlfcn.h>
 #include <glib.h>
 #include <locale.h>
 #include <stdio.h>
@@ -147,16 +144,17 @@ static
 char *
 get_local_config_path(const char *file_name)
 {
-    Dl_info dl_info;
-    if (dladdr((void*)get_local_config_path, &dl_info) && dl_info.dli_fname) {
-        return g_path_get_dirname(dl_info.dli_fname);
-    }
+    char       *res = NULL;
     const char *xdg_config_home = getenv("XDG_CONFIG_HOME");
+
     if (xdg_config_home) {
-        return g_strdup_printf("%s/%s", xdg_config_home, file_name);
+        res = g_strdup_printf("%s/%s", xdg_config_home, file_name);
+    } else {
+        const char *home = getenv("HOME");
+        res = g_strdup_printf("%s/.config/%s", home ? home : "", file_name);
     }
-    const char *home = getenv("HOME");
-    return g_strdup_printf("%s/.config/%s", home ? home : "", file_name);
+
+    return res;
 }
 
 static

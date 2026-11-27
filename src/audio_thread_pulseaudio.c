@@ -22,12 +22,9 @@
  * SOFTWARE.
  */
 
-#define _GNU_SOURCE
-
 #include "audio_thread.h"
 #include "trace_core.h"
 #include "trace_helpers.h"
-#include <dlfcn.h>
 #include <glib.h>
 #include <pthread.h>
 #include <pulse/mainloop.h>
@@ -35,85 +32,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define GET_SYMBOL(handle, symname)                     \
-do {                                                    \
-    symname = dlsym(handle, #symname);                  \
-    if (symname == NULL) {                              \
-        trace_error("can't resolve " #symname "\n");    \
-        dlsym_failed = 1;                               \
-    }                                                   \
-} while (0)
-
-static typeof(pa_context_connect) *d_pa_context_connect;
-static typeof(pa_context_disconnect) *d_pa_context_disconnect;
-static typeof(pa_context_get_state) *d_pa_context_get_state;
-static typeof(pa_context_new) *d_pa_context_new;
-static typeof(pa_context_set_state_callback) *d_pa_context_set_state_callback;
-static typeof(pa_context_unref) *d_pa_context_unref;
-static typeof(pa_frame_size) *d_pa_frame_size;
-static typeof(pa_operation_get_state) *d_pa_operation_get_state;
-static typeof(pa_operation_unref) *d_pa_operation_unref;
-static typeof(pa_stream_begin_write) *d_pa_stream_begin_write;
-static typeof(pa_stream_connect_playback) *d_pa_stream_connect_playback;
-static typeof(pa_stream_connect_record) *d_pa_stream_connect_record;
-static typeof(pa_stream_cork) *d_pa_stream_cork;
-static typeof(pa_stream_disconnect) *d_pa_stream_disconnect;
-static typeof(pa_stream_drop) *d_pa_stream_drop;
-static typeof(pa_stream_get_state) *d_pa_stream_get_state;
-static typeof(pa_stream_new) *d_pa_stream_new;
-static typeof(pa_stream_peek) *d_pa_stream_peek;
-static typeof(pa_stream_set_latency_update_callback) *d_pa_stream_set_latency_update_callback;
-static typeof(pa_stream_set_read_callback) *d_pa_stream_set_read_callback;
-static typeof(pa_stream_set_state_callback) *d_pa_stream_set_state_callback;
-static typeof(pa_stream_set_write_callback) *d_pa_stream_set_write_callback;
-static typeof(pa_stream_unref) *d_pa_stream_unref;
-static typeof(pa_stream_write) *d_pa_stream_write;
-static typeof(pa_threaded_mainloop_free) *d_pa_threaded_mainloop_free;
-static typeof(pa_threaded_mainloop_get_api) *d_pa_threaded_mainloop_get_api;
-static typeof(pa_threaded_mainloop_lock) *d_pa_threaded_mainloop_lock;
-static typeof(pa_threaded_mainloop_new) *d_pa_threaded_mainloop_new;
-static typeof(pa_threaded_mainloop_signal) *d_pa_threaded_mainloop_signal;
-static typeof(pa_threaded_mainloop_start) *d_pa_threaded_mainloop_start;
-static typeof(pa_threaded_mainloop_stop) *d_pa_threaded_mainloop_stop;
-static typeof(pa_threaded_mainloop_unlock) *d_pa_threaded_mainloop_unlock;
-static typeof(pa_threaded_mainloop_wait) *d_pa_threaded_mainloop_wait;
-
-#define pa_context_connect d_pa_context_connect
-#define pa_context_disconnect d_pa_context_disconnect
-#define pa_context_get_state d_pa_context_get_state
-#define pa_context_new d_pa_context_new
-#define pa_context_set_state_callback d_pa_context_set_state_callback
-#define pa_context_unref d_pa_context_unref
-#define pa_frame_size d_pa_frame_size
-#define pa_operation_get_state d_pa_operation_get_state
-#define pa_operation_unref d_pa_operation_unref
-#define pa_stream_begin_write d_pa_stream_begin_write
-#define pa_stream_connect_playback d_pa_stream_connect_playback
-#define pa_stream_connect_record d_pa_stream_connect_record
-#define pa_stream_cork d_pa_stream_cork
-#define pa_stream_disconnect d_pa_stream_disconnect
-#define pa_stream_drop d_pa_stream_drop
-#define pa_stream_get_state d_pa_stream_get_state
-#define pa_stream_new d_pa_stream_new
-#define pa_stream_peek d_pa_stream_peek
-#define pa_stream_set_latency_update_callback d_pa_stream_set_latency_update_callback
-#define pa_stream_set_read_callback d_pa_stream_set_read_callback
-#define pa_stream_set_state_callback d_pa_stream_set_state_callback
-#define pa_stream_set_write_callback d_pa_stream_set_write_callback
-#define pa_stream_unref d_pa_stream_unref
-#define pa_stream_write d_pa_stream_write
-#define pa_threaded_mainloop_free d_pa_threaded_mainloop_free
-#define pa_threaded_mainloop_get_api d_pa_threaded_mainloop_get_api
-#define pa_threaded_mainloop_lock d_pa_threaded_mainloop_lock
-#define pa_threaded_mainloop_new d_pa_threaded_mainloop_new
-#define pa_threaded_mainloop_signal d_pa_threaded_mainloop_signal
-#define pa_threaded_mainloop_start d_pa_threaded_mainloop_start
-#define pa_threaded_mainloop_stop d_pa_threaded_mainloop_stop
-#define pa_threaded_mainloop_unlock d_pa_threaded_mainloop_unlock
-#define pa_threaded_mainloop_wait d_pa_threaded_mainloop_wait
-
-static void *libpulse_handle;
 
 #define CLIENT_NAME     "freshwrapper"
 
@@ -173,54 +91,6 @@ static
 int
 pulse_available(void)
 {
-    if (!libpulse_handle) {
-        if (!(libpulse_handle = dlopen("libpulse.so.0", RTLD_LAZY | RTLD_LOCAL))) {
-            if (!(libpulse_handle = dlopen("libpulse.so", RTLD_LAZY | RTLD_LOCAL))) {
-                return 0;
-            }
-        }
-
-        int dlsym_failed = 0;
-        GET_SYMBOL(libpulse_handle, pa_context_connect);
-        GET_SYMBOL(libpulse_handle, pa_context_disconnect);
-        GET_SYMBOL(libpulse_handle, pa_context_get_state);
-        GET_SYMBOL(libpulse_handle, pa_context_new);
-        GET_SYMBOL(libpulse_handle, pa_context_set_state_callback);
-        GET_SYMBOL(libpulse_handle, pa_context_unref);
-        GET_SYMBOL(libpulse_handle, pa_frame_size);
-        GET_SYMBOL(libpulse_handle, pa_operation_get_state);
-        GET_SYMBOL(libpulse_handle, pa_operation_unref);
-        GET_SYMBOL(libpulse_handle, pa_stream_begin_write);
-        GET_SYMBOL(libpulse_handle, pa_stream_connect_playback);
-        GET_SYMBOL(libpulse_handle, pa_stream_connect_record);
-        GET_SYMBOL(libpulse_handle, pa_stream_cork);
-        GET_SYMBOL(libpulse_handle, pa_stream_disconnect);
-        GET_SYMBOL(libpulse_handle, pa_stream_drop);
-        GET_SYMBOL(libpulse_handle, pa_stream_get_state);
-        GET_SYMBOL(libpulse_handle, pa_stream_new);
-        GET_SYMBOL(libpulse_handle, pa_stream_peek);
-        GET_SYMBOL(libpulse_handle, pa_stream_set_latency_update_callback);
-        GET_SYMBOL(libpulse_handle, pa_stream_set_read_callback);
-        GET_SYMBOL(libpulse_handle, pa_stream_set_state_callback);
-        GET_SYMBOL(libpulse_handle, pa_stream_set_write_callback);
-        GET_SYMBOL(libpulse_handle, pa_stream_unref);
-        GET_SYMBOL(libpulse_handle, pa_stream_write);
-        GET_SYMBOL(libpulse_handle, pa_threaded_mainloop_free);
-        GET_SYMBOL(libpulse_handle, pa_threaded_mainloop_get_api);
-        GET_SYMBOL(libpulse_handle, pa_threaded_mainloop_lock);
-        GET_SYMBOL(libpulse_handle, pa_threaded_mainloop_new);
-        GET_SYMBOL(libpulse_handle, pa_threaded_mainloop_signal);
-        GET_SYMBOL(libpulse_handle, pa_threaded_mainloop_start);
-        GET_SYMBOL(libpulse_handle, pa_threaded_mainloop_stop);
-        GET_SYMBOL(libpulse_handle, pa_threaded_mainloop_unlock);
-        GET_SYMBOL(libpulse_handle, pa_threaded_mainloop_wait);
-        if (dlsym_failed) {
-            dlclose(libpulse_handle);
-            libpulse_handle = NULL;
-            return 0;
-        }
-    }
-
     int ret;
     pthread_mutex_lock(&lock);
     if (probed) {

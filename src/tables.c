@@ -22,8 +22,6 @@
  * SOFTWARE.
  */
 
-#define _GNU_SOURCE
-
 #include "config.h"
 #include "ppb_instance.h"
 #include "screensaver_control.h"
@@ -32,7 +30,6 @@
 #include <GL/glx.h>
 #include <X11/Xlib.h>
 #include <X11/extensions/Xrandr.h>
-#include <dlfcn.h>
 #include <fcntl.h>
 #include <glib.h>
 #include <pango/pangoft2.h>
@@ -42,37 +39,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <va/va_x11.h>
-
-#define GET_SYMBOL(handle, symname)                     \
-do {                                                    \
-    symname = dlsym(handle, #symname);                  \
-    if (symname == NULL) {                              \
-        trace_error("can't resolve " #symname "\n");    \
-        dlsym_failed = 1;                               \
-    }                                                   \
-} while (0)
-
-static typeof(vaInitialize) *d_vaInitialize;
-static typeof(vaTerminate) *d_vaTerminate;
-static typeof(vaQueryVendorString) *d_vaQueryVendorString;
-static typeof(vaErrorStr) *d_vaErrorStr;
-static typeof(vaGetDisplay) *d_vaGetDisplay;
-static typeof(vdp_device_create_x11) *d_vdp_device_create_x11;
-
-#define vaInitialize d_vaInitialize
-#define vaTerminate d_vaTerminate
-#define vaQueryVendorString d_vaQueryVendorString
-#define vaErrorStr d_vaErrorStr
-
-#define vaGetDisplay d_vaGetDisplay
-
-#define vdp_device_create_x11 d_vdp_device_create_x11
-
-static void *libva_handle;
-static void *libva_x11_handle;
-static void *libvdpau_handle;
-
-static void *libfreshffmpegwrapper_handle;
 
 NPNetscapeFuncs     npn;
 struct display_s    display;
@@ -258,38 +224,6 @@ static
 void
 initialize_vaapi(void)
 {
-    if (!libva_handle) {
-        if (!(libva_handle = dlopen("libva.so.2", RTLD_LAZY | RTLD_LOCAL))) {
-            if (!(libva_handle = dlopen("libva.so", RTLD_LAZY | RTLD_LOCAL))) {
-                trace_error("%s, libva missing\n", __func__);
-                return;
-            }
-        }
-
-        if (!(libva_x11_handle = dlopen("libva-x11.so.2", RTLD_LAZY | RTLD_LOCAL))) {
-            if (!(libva_x11_handle = dlopen("libva-x11.so", RTLD_LAZY | RTLD_LOCAL))) {
-                trace_error("%s, libva-x11 missing\n", __func__);
-                dlclose(libva_handle);
-                libva_handle = NULL;
-                return;
-            }
-        }
-
-        int dlsym_failed = 0;
-        GET_SYMBOL(libva_handle, vaInitialize);
-        GET_SYMBOL(libva_handle, vaTerminate);
-        GET_SYMBOL(libva_handle, vaQueryVendorString);
-        GET_SYMBOL(libva_handle, vaErrorStr);
-        GET_SYMBOL(libva_x11_handle, vaGetDisplay);
-        if (dlsym_failed) {
-            dlclose(libva_handle);
-            libva_handle = NULL;
-            dlclose(libva_x11_handle);
-            libva_x11_handle = NULL;
-            return;
-        }
-    }
-
     int major, minor;
 
     display.va = vaGetDisplay(display.x);
@@ -318,23 +252,6 @@ static
 void
 initialize_vdpau(void)
 {
-    if (!libvdpau_handle) {
-        if (!(libvdpau_handle = dlopen("libvdpau.so.1", RTLD_LAZY | RTLD_LOCAL))) {
-            if (!(libvdpau_handle = dlopen("libvdpau.so", RTLD_LAZY | RTLD_LOCAL))) {
-                trace_error("%s, libvdpau missing\n", __func__);
-                return;
-            }
-        }
-
-        int dlsym_failed = 0;
-        GET_SYMBOL(libvdpau_handle, vdp_device_create_x11);
-        if (dlsym_failed) {
-            dlclose(libvdpau_handle);
-            libvdpau_handle = NULL;
-            return;
-        }
-    }
-
     display.vdp_device = VDP_INVALID_HANDLE;
     VdpStatus st = vdp_device_create_x11(display.x, DefaultScreen(display.x), &display.vdp_device,
                                &display.vdp_get_proc_address);
@@ -429,47 +346,11 @@ tables_open_display(void)
     display.vdpau_available = 0;
 
     if (config.enable_hwdec) {
-        if (!libfreshffmpegwrapper_handle) {
-            Dl_info dl_info;
-            if (dladdr((void*)tables_get_pp_instance, &dl_info) && dl_info.dli_fname) {
-                // expose our default-visibility exports for the wrapper to grab
-                dlopen(dl_info.dli_fname, RTLD_NOW | RTLD_NOLOAD | RTLD_GLOBAL);
+        if (config.enable_vaapi)
+            initialize_vaapi();
 
-                char* dir = g_path_get_dirname(dl_info.dli_fname);
-                char* path = g_strdup_printf("%s/libfreshffmpegwrapper/%s", dir, "libfreshffmpegwrapper_62.so");              // ffmpeg 8
-                if (!(libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL))) {
-                    g_free(path);
-                    path = g_strdup_printf("%s/libfreshffmpegwrapper/%s", dir, "libfreshffmpegwrapper_61.so");                // ffmpeg 7
-                    if (!(libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL))) {
-                        g_free(path);
-                        path = g_strdup_printf("%s/libfreshffmpegwrapper/%s", dir, "libfreshffmpegwrapper_60.so");            // ffmpeg 6
-                        if (!(libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL))) {
-                            g_free(path);
-                            path = g_strdup_printf("%s/libfreshffmpegwrapper/%s", dir, "libfreshffmpegwrapper_59.so");        // ffmpeg 5
-                            if (!(libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL))) {
-                                g_free(path);
-                                path = g_strdup_printf("%s/libfreshffmpegwrapper/%s", dir, "libfreshffmpegwrapper_58.so");    // ffmpeg 4
-                                libfreshffmpegwrapper_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-                            }
-                        }
-                    }
-                }
-                g_free(path);
-                g_free(dir);
-            }
-            // the only method we need is the constructor, so no dlsyms
-        }
-
-        if (libfreshffmpegwrapper_handle) {
-            if (config.enable_vaapi)
-                initialize_vaapi();
-
-            if (config.enable_vdpau)
-                initialize_vdpau();
-        }
-        else {
-            trace_error("%s, could not open library binding to ffmpeg\n", __func__);
-        }
+        if (config.enable_vdpau)
+            initialize_vdpau();
     }
 
     if (!glXQueryVersion(display.x, &major, &minor)) {

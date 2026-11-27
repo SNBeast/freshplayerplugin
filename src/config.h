@@ -67,7 +67,6 @@ struct fpp_config_s {
     } quirks;
 };
 
-__attribute__((visibility("default")))
 extern struct fpp_config_s config;
 
 void

@@ -22,12 +22,9 @@
  * SOFTWARE.
  */
 
-#define _GNU_SOURCE             // for dladdr()
-
 #define _XOPEN_SOURCE 500
 #include "config.h"
 #include "trace_core.h"
-#include <dlfcn.h>
 #include <glib.h>
 #include <libgen.h>
 #include <parson/parson.h>
@@ -183,14 +180,6 @@ probe_flapper(const char *fname)
 void
 fpp_config_find_backend_plugin(void)
 {
-    Dl_info dl_info;
-    if (dladdr((void*)fpp_config_find_backend_plugin, &dl_info) && dl_info.dli_fname) {
-        char* dir = g_path_get_dirname(dl_info.dli_fname);
-        char* path = g_strdup_printf("%s/%s", dir, "libpepflashplayer.so");
-        probe_flapper(path);
-        g_free(dir);
-        g_free(path);
-    }
     if (config.pepperflash_path) {
         // First, search in user supplied paths.
         gchar **paths = g_strsplit(config.pepperflash_path, ":", -1);
