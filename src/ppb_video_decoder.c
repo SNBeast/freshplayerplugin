@@ -22,7 +22,6 @@
  * SOFTWARE.
  */
 
-#include "compat_glx_defines.h"
 #include "config.h"
 #include "glx.h"
 #include "pp_interface.h"
@@ -41,27 +40,21 @@
 #include <X11/Xlib.h>
 #include <glib.h>
 #include <libavcodec/avcodec.h>
-#include <libavcodec/vdpau.h>
 #include <libavutil/avutil.h>
-#include <libavutil/common.h>
 #include <libavutil/hwcontext.h>
-#include <libavutil/hwcontext_vaapi.h>
+#include <libavutil/imgutils.h>
+#include <libswscale/swscale.h>
 #include <ppapi/c/dev/ppp_video_decoder_dev.h>
 #include <ppapi/c/pp_errors.h>
 #include <pthread.h>
 #include <stdlib.h>
-#include <va/va.h>
-#include <va/va_x11.h>
-#include <vdpau/vdpau.h>
 
 enum hwdec_api_e {
     HWDEC_NONE = 0,
     HWDEC_VAAPI,
-    HWDEC_VDPAU,
 };
 
-#define MAX_VA_SURFACES         18  // H.264: 16 references and 2 working
-#define MAX_VDP_SURFACES        16  // H.264: 16 references
+#define DEFAULT_PICTURE_BUFFERS 18  // H.264: 16 references and 2 working
 
 // H.264 have maximum 16 reference frames. Plus one current. Plus one frame for delayed
 // release when PPAPI client first calls .decode() and only then calls
@@ -77,8 +70,13 @@ struct pp_video_decoder_s {
     AVCodecContext         *avctx;
     AVCodecParserContext   *avparser;
     AVFrame                *avframe;
-    uint32_t                width;
-    uint32_t                height;
+    AVFrame                *swframe;
+    struct SwsContext      *sws_ctx;
+    uint8_t                *rgba_buf;
+    size_t                  rgba_buf_size;
+    int                     sws_width;
+    int                     sws_height;
+    enum AVPixelFormat      sws_src_fmt;
     int32_t                 last_consumed_bitstream_buffer_id;
     size_t                  buffer_count;
     struct {
@@ -87,18 +85,7 @@ struct pp_video_decoder_s {
         uint32_t    height;
         uint32_t    texture_id;
         uint32_t    used;
-        Pixmap      pixmap;
-        GLXPixmap   glx_pixmap;
-        VdpPresentationQueueTarget  vdp_presentation_queue_target;
-        VdpPresentationQueue        vdp_presentation_queue;
     } *buffers;
-    struct AVVDPAUContext   vdpau_context;
-    VASurfaceID             surfaces[MAX_VA_SURFACES];
-    VdpVideoSurface         vdp_video_surfaces[MAX_VDP_SURFACES];
-    int                     surface_used[MAX_VA_SURFACES]; // TODO: use overall maximum
-
-    VdpVideoMixer           vdp_video_mixer;
-    VdpOutputSurface        vdp_output_surface;
 
     unsigned int            initialized : 1;
     unsigned int            buffers_were_requested : 1;
@@ -107,17 +94,6 @@ struct pp_video_decoder_s {
 };
 
 STATIC_ASSERT(sizeof(struct pp_video_decoder_s) <= LARGEST_RESOURCE_SIZE);
-
-static
-void
-report_vdpau_error(VdpStatus st, const char *what, const char *where)
-{
-    if (st == VDP_STATUS_OK)
-        return;
-
-    trace_error("%s, %s failed: %d, %s\n", where, what, (int)st, display.vdp_get_error_string(st));
-}
-
 
 static
 void
@@ -140,73 +116,26 @@ deinitialize_decoder(struct pp_video_decoder_s *vd)
     if (vd->avframe)
         av_frame_free(&vd->avframe);
 
-    switch (vd->hwdec_api) {
-    case HWDEC_VAAPI:
-        vaDestroySurfaces(display.va, vd->surfaces, MAX_VA_SURFACES);
-        for (uintptr_t k = 0; k < MAX_VA_SURFACES; k ++) {
-            vd->surfaces[k] = VA_INVALID_SURFACE;
-            vd->surface_used[k] = 0;
-        }
-        break;
+    if (vd->swframe)
+        av_frame_free(&vd->swframe);
 
-    case HWDEC_VDPAU:
-        if (vd->vdpau_context.decoder != VDP_INVALID_HANDLE) {
-            display.vdp_decoder_destroy(vd->vdpau_context.decoder);
-            vd->vdpau_context.decoder = VDP_INVALID_HANDLE;
-        }
-
-        if (vd->vdp_video_mixer != VDP_INVALID_HANDLE) {
-            display.vdp_video_mixer_destroy(vd->vdp_video_mixer);
-            vd->vdp_video_mixer = VDP_INVALID_HANDLE;
-        }
-
-        if (vd->vdp_output_surface != VDP_INVALID_HANDLE) {
-            display.vdp_output_surface_destroy(vd->vdp_output_surface);
-            vd->vdp_output_surface = VDP_INVALID_HANDLE;
-        }
-
-        for (uintptr_t k = 0; k < MAX_VDP_SURFACES; k ++) {
-            if (vd->vdp_video_surfaces[k] != VDP_INVALID_HANDLE) {
-                display.vdp_video_surface_destroy(vd->vdp_video_surfaces[k]);
-                vd->vdp_video_surfaces[k] = VDP_INVALID_HANDLE;
-                vd->surface_used[k] = 0;
-            }
-        }
-
-        for (uintptr_t k = 0; k < vd->buffer_count; k ++) {
-            if (vd->buffers[k].vdp_presentation_queue != VDP_INVALID_HANDLE) {
-                display.vdp_presentation_queue_destroy(vd->buffers[k].vdp_presentation_queue);
-                vd->buffers[k].vdp_presentation_queue = VDP_INVALID_HANDLE;
-            }
-
-            if (vd->buffers[k].vdp_presentation_queue_target != VDP_INVALID_HANDLE) {
-                display.vdp_presentation_queue_target_destroy(vd->buffers[k]
-                                                              .vdp_presentation_queue_target);
-                vd->buffers[k].vdp_presentation_queue_target = VDP_INVALID_HANDLE;
-            }
-        }
-        break;
-
-    default:
-        // no-op
-        break;
+    if (vd->sws_ctx) {
+        sws_freeContext(vd->sws_ctx);
+        vd->sws_ctx = NULL;
     }
+
+    av_freep(&vd->rgba_buf);
+    vd->rgba_buf_size = 0;
+    vd->sws_width = 0;
+    vd->sws_height = 0;
+    vd->sws_src_fmt = AV_PIX_FMT_NONE;
 
     for (uintptr_t k = 0; k < vd->buffer_count; k ++) {
         vd->ppp_video_decoder_dev->DismissPictureBuffer(vd->instance->id, vd->self_id,
                                                         vd->buffers[k].id);
-        pthread_mutex_lock(&display.lock);
-        if (vd->buffers[k].glx_pixmap != None) {
-            glXDestroyPixmap(display.x, vd->buffers[k].glx_pixmap);
-            vd->buffers[k].glx_pixmap = None;
-        }
-        if (vd->buffers[k].pixmap != None) {
-            XFreePixmap(display.x, vd->buffers[k].pixmap);
-            vd->buffers[k].pixmap = None;
-        }
-        pthread_mutex_unlock(&display.lock);
     }
 
+    vd->hwdec_api = HWDEC_NONE;
     vd->buffer_count = 0;
     vd->buffers_were_requested = 0;
     vd->initialized = 0;
@@ -229,273 +158,22 @@ ppb_video_decoder_destroy_priv(void *p)
 
 static
 enum AVPixelFormat
-prepare_vaapi_context(struct pp_video_decoder_s *vd, int width, int height)
-{
-    VAStatus status;
-
-    AVBufferRef *hw_device_ref = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_VAAPI);
-    if (!hw_device_ref) {
-        trace_error("%s, can't allocate VAAPI device context\n", __func__);
-        goto err;
-    }
-
-    ((AVVAAPIDeviceContext *)((AVHWDeviceContext *)hw_device_ref->data)->hwctx)->display = display.va;
-    if (av_hwdevice_ctx_init(hw_device_ref) < 0) {
-        trace_error("%s, can't initialize VAAPI device context\n", __func__);
-        goto err;
-    }
-
-#if VA_CHECK_VERSION(0, 34, 0)
-    status = vaCreateSurfaces(display.va, VA_RT_FORMAT_YUV420, width, height,
-                              vd->surfaces, MAX_VA_SURFACES, NULL, 0);
-#else
-    status = vaCreateSurfaces(display.va, width, height, VA_RT_FORMAT_YUV420,
-                              MAX_VA_SURFACES, vd->surfaces);
-#endif
-    if (status != VA_STATUS_SUCCESS) {
-        trace_error("%s, can't create VA surfaces\n", __func__);
-        goto err;
-    }
-
-    AVBufferRef *hw_frames_ref = av_hwframe_ctx_alloc(hw_device_ref);
-    if (!hw_frames_ref) {
-        trace_error("%s, can't allocate VAAPI frames context\n", __func__);
-        goto err;
-    }
-
-    AVHWFramesContext *frames_ctx = (AVHWFramesContext *)hw_frames_ref->data;
-    frames_ctx->format = AV_PIX_FMT_VAAPI;
-    frames_ctx->sw_format = AV_PIX_FMT_NV12;
-    frames_ctx->width = width;
-    frames_ctx->height = height;
-    frames_ctx->initial_pool_size = MAX_VA_SURFACES;
-
-    AVVAAPIFramesContext *vaapi_frames_ctx = frames_ctx->hwctx;
-    vaapi_frames_ctx->surface_ids = vd->surfaces;
-    vaapi_frames_ctx->nb_surfaces = MAX_VA_SURFACES;
-
-    if (av_hwframe_ctx_init(hw_frames_ref) < 0) {
-        trace_error("%s, can't initialize VAAPI frames context\n", __func__);
-        goto err;
-    }
-
-    av_buffer_unref(&vd->avctx->hw_frames_ctx);
-    vd->avctx->hw_frames_ctx = hw_frames_ref;
-
-    av_buffer_unref(&hw_device_ref);
-    vd->hwdec_api = HWDEC_VAAPI;
-    return AV_PIX_FMT_VAAPI;
-
-err:
-    av_buffer_unref(&hw_frames_ref);
-    av_buffer_unref(&hw_device_ref);
-    vd->failed_state = 1;
-    vd->ppp_video_decoder_dev->NotifyError(vd->instance->id, vd->self_id,
-                                           PP_VIDEODECODERERROR_UNREADABLE_INPUT);
-    return AV_PIX_FMT_NONE;
-}
-
-static
-enum AVPixelFormat
-prepare_vdpau_context(struct pp_video_decoder_s *vd, int width, int height)
-{
-    VdpStatus st;
-
-    vd->hwdec_api = HWDEC_VDPAU;
-    vd->vdpau_context.decoder = VDP_INVALID_HANDLE;
-    vd->vdp_video_mixer = VDP_INVALID_HANDLE;
-    vd->vdp_output_surface = VDP_INVALID_HANDLE;
-
-    for (uintptr_t k = 0; k < MAX_VDP_SURFACES; k ++)
-        vd->vdp_video_surfaces[k] = VDP_INVALID_HANDLE;
-
-    st = display.vdp_decoder_create(display.vdp_device, VDP_DECODER_PROFILE_H264_HIGH, width,
-                                    height, MAX_VDP_SURFACES, &vd->vdpau_context.decoder);
-    if (st != VDP_STATUS_OK) {
-        report_vdpau_error(st, "VdpDecoderCreate", __func__);
-        goto err;
-    }
-
-    for (uintptr_t k = 0; k < MAX_VDP_SURFACES; k ++) {
-        st = display.vdp_video_surface_create(display.vdp_device, VDP_CHROMA_TYPE_420,
-                                              width, height, &vd->vdp_video_surfaces[k]);
-        if (st != VDP_STATUS_OK) {
-            report_vdpau_error(st, "VdpVideoSurfaceCreate", __func__);
-            goto err;
-        }
-    }
-
-    const VdpVideoMixerParameter param_names[] = {
-        VDP_VIDEO_MIXER_PARAMETER_VIDEO_SURFACE_WIDTH,
-        VDP_VIDEO_MIXER_PARAMETER_VIDEO_SURFACE_HEIGHT,
-        VDP_VIDEO_MIXER_PARAMETER_CHROMA_TYPE,
-    };
-
-    const void * const param_values[] = {
-        &(uint32_t){width},
-        &(uint32_t){height},
-        &(VdpChromaType){VDP_CHROMA_TYPE_420},
-    };
-
-    st = display.vdp_video_mixer_create(display.vdp_device, 0, NULL,
-                                        sizeof(param_names)/sizeof(param_names[0]),
-                                        param_names, param_values, &vd->vdp_video_mixer);
-    if (st != VDP_STATUS_OK) {
-        report_vdpau_error(st, "VdpVideoMixerCreate", __func__);
-        goto err;
-    }
-
-    st = display.vdp_output_surface_create(display.vdp_device, VDP_RGBA_FORMAT_B8G8R8A8,
-                                           width, height, &vd->vdp_output_surface);
-    if (st != VDP_STATUS_OK) {
-        report_vdpau_error(st, "VdpOutputSurfaceCreate", __func__);
-        goto err;
-    }
-
-    vd->vdpau_context.render = display.vdp_decoder_render;
-    vd->avctx->hwaccel_context = &vd->vdpau_context;
-    return AV_PIX_FMT_VDPAU;
-
-err:
-    vd->failed_state = 1;
-    vd->ppp_video_decoder_dev->NotifyError(vd->instance->id, vd->self_id,
-                                           PP_VIDEODECODERERROR_UNREADABLE_INPUT);
-    return AV_PIX_FMT_NONE;
-}
-
-static
-enum AVPixelFormat
 get_format(struct AVCodecContext *s, const enum AVPixelFormat *fmt)
 {
     struct pp_video_decoder_s *vd = s->opaque;
-    int have_vaapi = 0;
-    int have_vdpau = 0;
 
-    for (int k = 0; fmt[k] != AV_PIX_FMT_NONE; k ++) {
-        if (fmt[k] == AV_PIX_FMT_VAAPI)
-            have_vaapi = display.va_available;
-        if (fmt[k] == AV_PIX_FMT_VDPAU)
-            have_vdpau = display.vdpau_available;
-    }
-
-    trace_info_f("      VDPAU:  %s\n", have_vdpau ? "present" : "not present");
-    trace_info_f("      VA-API: %s\n", have_vaapi ? "present" : "not present");
-
-    if (have_vaapi) {
-        return prepare_vaapi_context(vd, s->width, s->height);
-    }
-
-    if (have_vdpau) {
-        return prepare_vdpau_context(vd, s->width, s->height);
-    }
-
-    // nothing found, report error
-    vd->ppp_video_decoder_dev->NotifyError(vd->instance->id, vd->self_id,
-                                           PP_VIDEODECODERERROR_UNREADABLE_INPUT);
-    return AV_PIX_FMT_NONE;
-}
-
-static
-void
-release_buffer2(void *opaque, uint8_t *data)
-{
-    struct pp_video_decoder_s *vd = opaque;
-
-    switch (vd->hwdec_api) {
-    case HWDEC_VAAPI:
-        {
-            VASurfaceID surface = GPOINTER_TO_SIZE(data);
-            for (int k = 0; k < MAX_VA_SURFACES; k ++) {
-                if (surface == vd->surfaces[k]) {
-                    vd->surface_used[k] = 0;
-                    break;
-                }
+    if (vd->hwdec_api == HWDEC_VAAPI) {
+        for (int k = 0; fmt[k] != AV_PIX_FMT_NONE; k ++) {
+            if (fmt[k] == AV_PIX_FMT_VAAPI) {
+                trace_info_f("      VA-API: enabled via FFmpeg hwcontext\n");
+                return AV_PIX_FMT_VAAPI;
             }
         }
-        break;
-
-    case HWDEC_VDPAU:
-        {
-            VdpVideoSurface surface = GPOINTER_TO_SIZE(data);
-            for (int k = 0; k < MAX_VDP_SURFACES; k ++) {
-                if (surface == vd->vdp_video_surfaces[k]) {
-                    vd->surface_used[k] = 0;
-                    break;
-                }
-            }
-        }
-
-    default:
-        // no-op
-        break;
-    }
-}
-
-static
-int
-get_buffer2(struct AVCodecContext *s, AVFrame *pic, int flags)
-{
-    struct pp_video_decoder_s *vd = s->opaque;
-
-    switch (vd->hwdec_api) {
-    case HWDEC_VAAPI:
-        {
-            VASurfaceID surface = VA_INVALID_SURFACE;
-            for (int k = 0; k < MAX_VA_SURFACES; k ++) {
-                if (!vd->surface_used[k]) {
-                    surface = vd->surfaces[k];
-                    vd->surface_used[k] = 1;
-                    break;
-                }
-            }
-
-            if (surface == VA_INVALID_SURFACE) {
-                trace_error("%s, can't find free VA surface\n", __func__);
-                return -1;
-            }
-
-            pic->data[0] = GSIZE_TO_POINTER(surface);
-            pic->data[1] = NULL;
-            pic->data[2] = NULL;
-            pic->data[3] = GSIZE_TO_POINTER(surface);
-            pic->hw_frames_ctx = av_buffer_ref(s->hw_frames_ctx);
-        }
-        break;
-
-    case HWDEC_VDPAU:
-        {
-            VdpVideoSurface surface = VDP_INVALID_HANDLE;
-            for (int k = 0; k < MAX_VDP_SURFACES; k ++) {
-                if (!vd->surface_used[k]) {
-                    surface = vd->vdp_video_surfaces[k];
-                    vd->surface_used[k] = 1;
-                    break;
-                }
-            }
-
-            if (surface == VDP_INVALID_HANDLE) {
-                trace_error("%s, can't find free VDP surface\n", __func__);
-                return -1;
-            }
-
-            pic->data[0] = GSIZE_TO_POINTER(surface);
-            pic->data[1] = NULL;
-            pic->data[2] = NULL;
-            pic->data[3] = GSIZE_TO_POINTER(surface);
-        }
-        break;
-
-    default:
-        trace_error("%s, not reached\n", __func__);
-        break;
     }
 
-    AVBufferRef *buf = av_buffer_create(pic->data[3], 0, release_buffer2, vd, 0);
-    if (!buf)
-        return -1;
-    pic->buf[0] = buf;
-
-    return 0;
+    trace_info_f("      VA-API: unavailable for stream, falling back to software\n");
+    vd->hwdec_api = HWDEC_NONE;
+    return fmt[0];
 }
 
 static
@@ -511,8 +189,6 @@ initialize_decoder(struct pp_video_decoder_s *vd)
         PP_GRAPHICS3DATTRIB_BLUE_SIZE,  8,
         PP_GRAPHICS3DATTRIB_ALPHA_SIZE, 8,
         PP_GRAPHICS3DATTRIB_DEPTH_SIZE, 16,
-        GLX_Y_INVERTED_EXT,             True,
-        GLX_BIND_TO_TEXTURE_RGBA_EXT,   True,
         PP_GRAPHICS3DATTRIB_NONE,
     };
 
@@ -542,9 +218,20 @@ initialize_decoder(struct pp_video_decoder_s *vd)
     }
 
     vd->avctx->opaque = vd;
-    vd->avctx->thread_count = 1;
     vd->avctx->get_format = get_format;
-    vd->avctx->get_buffer2 = get_buffer2;
+
+    AVBufferRef *hw_device_ref = NULL;
+    if (av_hwdevice_ctx_create(&hw_device_ref, AV_HWDEVICE_TYPE_VAAPI, NULL, NULL, 0) == 0) {
+        vd->avctx->hw_device_ctx = av_buffer_ref(hw_device_ref);
+        av_buffer_unref(&hw_device_ref);
+        vd->hwdec_api = HWDEC_VAAPI;
+    } else {
+        trace_info_f("%s, VA-API hwdevice init failed, using software decoding\n", __func__);
+    }
+
+    if (vd->hwdec_api == HWDEC_NONE) {
+        vd->avctx->thread_count = 0; // auto-detect CPU threads for software decoding
+    }
 
     if (avcodec_open2(vd->avctx, vd->avcodec, NULL) < 0) {
         trace_error("%s, can't open codec\n", __func__);
@@ -552,8 +239,9 @@ initialize_decoder(struct pp_video_decoder_s *vd)
     }
 
     vd->avframe = av_frame_alloc();
-    if (!vd->avframe) {
-        trace_error("%s, can't alloc frame\n", __func__);
+    vd->swframe = av_frame_alloc();
+    if (!vd->avframe || !vd->swframe) {
+        trace_error("%s, can't alloc frames\n", __func__);
         goto err;
     }
 
@@ -568,26 +256,6 @@ err:
 PP_Resource
 ppb_video_decoder_create(PP_Instance instance, PP_Resource context, PP_VideoDecoder_Profile profile)
 {
-    if (!config.enable_hwdec) {
-        trace_info_f("      hardware-accelerated decoding was disabled in config file\n");
-        return 0;
-    }
-
-    if (!display.va_available && !display.vdpau_available) {
-        trace_info_f("      no hw acceleration available\n");
-        return 0;
-    }
-
-    if (!display.glXBindTexImageEXT) {
-        trace_info_f("      no glXBindTexImageEXT available\n");
-        return 0;
-    }
-
-    if (!display.glXReleaseTexImageEXT) {
-        trace_info_f("      no glXReleaseTexImageEXT available\n");
-        return 0;
-    }
-
     switch (profile) {
     case PP_VIDEODECODER_H264PROFILE_BASELINE:
     case PP_VIDEODECODER_H264PROFILE_MAIN:
@@ -655,20 +323,13 @@ static
 void
 request_buffers(struct pp_video_decoder_s *vd)
 {
-    int requested_buffer_count;
     const PP_Instance instance = vd->instance->id;
     const struct PP_Size dimensions = { .width = vd->avctx->width,
                                         .height = vd->avctx->height };
 
-    switch (vd->hwdec_api) {
-    case HWDEC_VAAPI:   requested_buffer_count = MAX_VA_SURFACES; break;
-    case HWDEC_VDPAU:   requested_buffer_count = MAX_VDP_SURFACES; break;
-    default:            requested_buffer_count = 5; break; // just a number, no particular reason
-    }
-
     pp_resource_release(vd->self_id);
 
-    vd->ppp_video_decoder_dev->ProvidePictureBuffers(instance, vd->self_id, requested_buffer_count,
+    vd->ppp_video_decoder_dev->ProvidePictureBuffers(instance, vd->self_id, DEFAULT_PICTURE_BUFFERS,
                                                      &dimensions, GL_TEXTURE_2D);
     pp_resource_acquire(vd->self_id, PP_RESOURCE_VIDEO_DECODER);
 }
@@ -688,6 +349,42 @@ find_free_buffer(struct pp_video_decoder_s *vd)
 }
 
 static
+int
+ensure_sws_and_rgba_buffer(struct pp_video_decoder_s *vd, int width, int height,
+                           enum AVPixelFormat src_fmt)
+{
+    if (vd->sws_ctx && vd->sws_width == width && vd->sws_height == height && vd->sws_src_fmt == src_fmt) {
+        return 0;
+    }
+    if (vd->sws_ctx) {
+        sws_freeContext(vd->sws_ctx);
+        vd->sws_ctx = NULL;
+    }
+
+    size_t needed = (size_t)av_image_get_buffer_size(AV_PIX_FMT_RGBA, width, height, 1);
+    if (needed > vd->rgba_buf_size) {
+        av_freep(&vd->rgba_buf);
+        vd->rgba_buf = av_malloc(needed);
+        if (!vd->rgba_buf) {
+            vd->rgba_buf_size = 0;
+            return -1;
+        }
+        vd->rgba_buf_size = needed;
+    }
+
+    vd->sws_ctx = sws_getContext(width, height, src_fmt,
+                                 width, height, AV_PIX_FMT_RGBA,
+                                 SWS_BILINEAR, NULL, NULL, NULL);
+    if (!vd->sws_ctx)
+        return -1;
+
+    vd->sws_width = width;
+    vd->sws_height = height;
+    vd->sws_src_fmt = src_fmt;
+    return 0;
+}
+
+static
 void
 issue_frame(struct pp_video_decoder_s *vd)
 {
@@ -700,53 +397,46 @@ issue_frame(struct pp_video_decoder_s *vd)
         return;
     }
 
+    if (frame->format == AV_PIX_FMT_VAAPI) {
+        av_frame_unref(vd->swframe);
+        if (av_hwframe_transfer_data(vd->swframe, frame, 0) < 0) {
+            trace_error("%s, av_hwframe_transfer_data failed\n", __func__);
+            vd->buffers[idx].used = 0;
+            return;
+        }
+        frame = vd->swframe;
+    }
+
+    if (ensure_sws_and_rgba_buffer(vd, frame->width, frame->height,
+                                   (enum AVPixelFormat)frame->format) < 0) {
+        trace_error("%s, failed to prepare RGBA conversion buffer\n", __func__);
+        vd->buffers[idx].used = 0;
+        return;
+    }
+
+    uint8_t *dst_data[4] = { vd->rgba_buf, NULL, NULL, NULL };
+    int dst_linesize[4]  = { frame->width * 4, 0, 0, 0 };
+    sws_scale(vd->sws_ctx, (const uint8_t * const *)frame->data, frame->linesize,
+              0, frame->height, dst_data, dst_linesize);
+
     struct pp_graphics3d_s *g3d = pp_resource_acquire(vd->graphics3d, PP_RESOURCE_GRAPHICS3D);
     if (!g3d) {
         trace_error("%s, bad resource\n", __func__);
+        vd->buffers[idx].used = 0;
         return;
     }
 
     pthread_mutex_lock(&display.lock);
+
     glXMakeCurrent(display.x, g3d->glx_pixmap, g3d->glc);
     glBindTexture(GL_TEXTURE_2D, vd->buffers[idx].texture_id);
-    display.glXBindTexImageEXT(display.x, vd->buffers[idx].glx_pixmap, GLX_FRONT_EXT, NULL);
-    XFlush(display.x);
 
-    switch (vd->hwdec_api) {
-    case HWDEC_VAAPI:
-        {
-            VASurfaceID va_surf = GPOINTER_TO_SIZE(frame->data[3]);
-            vaPutSurface(display.va, va_surf, vd->buffers[idx].pixmap,
-                         0, 0, frame->width, frame->height,
-                         0, 0, frame->width, frame->height,
-                         NULL, 0, VA_FRAME_PICTURE);
-        }
-        break;
-    case HWDEC_VDPAU:
-        {
-            VdpStatus st;
-            VdpVideoSurface vdp_surf = GPOINTER_TO_SIZE(frame->data[3]);
-            st = display.vdp_video_mixer_render(vd->vdp_video_mixer, VDP_INVALID_HANDLE, NULL,
-                                                VDP_VIDEO_MIXER_PICTURE_STRUCTURE_FRAME,
-                                                0, NULL, vdp_surf, 0, NULL, NULL,
-                                                vd->vdp_output_surface, NULL, NULL,
-                                                0, NULL);
-            report_vdpau_error(st, "VdpVideoMixerRender", __func__);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame->width, frame->height,
+                    GL_RGBA, GL_UNSIGNED_BYTE, vd->rgba_buf);
 
-            st = display.vdp_presentation_queue_display(vd->buffers[idx].vdp_presentation_queue,
-                                                        vd->vdp_output_surface,
-                                                        vd->buffers[idx].width,
-                                                        vd->buffers[idx].height, 0);
-            report_vdpau_error(st, "VdpPresentationQueueDisplay", __func__);
-        }
-        break;
-    default:
-        trace_error("%s, not reached\n", __func__);
-        break;
-    }
-
-    XFlush(display.x);
+    glBindTexture(GL_TEXTURE_2D, 0);
     glXMakeCurrent(display.x, None, NULL);
+
     pthread_mutex_unlock(&display.lock);
 
     pp_resource_release(vd->graphics3d);
@@ -768,17 +458,14 @@ decode_frame(struct pp_video_decoder_s *vd, uint8_t *data, size_t data_len,
              int32_t bitstream_buffer_id)
 {
     AVPacket *packet = av_packet_alloc();
+    if (!packet)
+        return;
 
     packet->data = data;
     packet->size = data_len;
     packet->pts = bitstream_buffer_id;
 
-    // libavcodec can call hw functions, which in turn can call Xlib functions,
-    // therefore we need to lock
-    pthread_mutex_lock(&display.lock);
     int ret = avcodec_send_packet(vd->avctx, packet);
-    pthread_mutex_unlock(&display.lock);
-
     av_packet_free(&packet);
 
     if (ret < 0) {
@@ -787,16 +474,13 @@ decode_frame(struct pp_video_decoder_s *vd, uint8_t *data, size_t data_len,
     }
 
     while (1) {
-        pthread_mutex_lock(&display.lock);
         int val = avcodec_receive_frame(vd->avctx, vd->avframe);
-        pthread_mutex_unlock(&display.lock);
-
-        if (val == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+        if (val == AVERROR(EAGAIN) || val == AVERROR_EOF) {
             // normal, nothing more for now
             break;
         }
         if (val < 0) {
-            trace_error("%s, error %d while receiving frame from decoder\n", __func__, ret);
+            trace_error("%s, error %d while receiving frame from decoder\n", __func__, val);
             return;
         }
         if (!vd->buffers_were_requested) {
@@ -805,6 +489,7 @@ decode_frame(struct pp_video_decoder_s *vd, uint8_t *data, size_t data_len,
         }
 
         issue_frame(vd);
+        av_frame_unref(vd->avframe);
     }
 }
 
@@ -873,19 +558,14 @@ ppb_video_decoder_assign_picture_buffers(PP_Resource video_decoder, uint32_t no_
     struct pp_video_decoder_s *vd = pp_resource_acquire(video_decoder, PP_RESOURCE_VIDEO_DECODER);
     if (!vd) {
         trace_error("%s, bad resource\n", __func__);
-        goto err_1;
+        return;
     }
 
-    struct pp_graphics3d_s *g3d = pp_resource_acquire(vd->graphics3d, PP_RESOURCE_GRAPHICS3D);
-    if (!g3d) {
-        trace_error("%s, bad graphics3d context\n", __func__);
-        goto err_2;
-    }
-
-    vd->buffers = malloc(no_of_buffers * sizeof(*vd->buffers));
+    vd->buffers = calloc(no_of_buffers, sizeof(*vd->buffers));
     if (!vd->buffers) {
         trace_error("%s, memory allocation failure\n", __func__);
-        goto err_3;
+        pp_resource_release(video_decoder);
+        return;
     }
 
     vd->buffer_count = no_of_buffers;
@@ -895,57 +575,9 @@ ppb_video_decoder_assign_picture_buffers(PP_Resource video_decoder, uint32_t no_
         vd->buffers[k].height =     buffers[k].size.height;
         vd->buffers[k].texture_id = buffers[k].texture_id;
         vd->buffers[k].used =       0;
-
-        pthread_mutex_lock(&display.lock);
-        vd->buffers[k].pixmap = XCreatePixmap(display.x, DefaultRootWindow(display.x),
-                                              buffers[k].size.width, buffers[k].size.height,
-                                              g3d->depth);
-        int tfp_pixmap_attrs[] = {
-            GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_2D_EXT,
-            GLX_MIPMAP_TEXTURE_EXT, GL_FALSE,
-            GLX_TEXTURE_FORMAT_EXT, g3d->depth == 32 ? GLX_TEXTURE_FORMAT_RGBA_EXT
-                                                     : GLX_TEXTURE_FORMAT_RGB_EXT,
-            GL_NONE
-        };
-        vd->buffers[k].glx_pixmap = glXCreatePixmap(display.x, g3d->fb_config,
-                                                    vd->buffers[k].pixmap, tfp_pixmap_attrs);
-        pthread_mutex_unlock(&display.lock);
-        if (vd->buffers[k].glx_pixmap == None) {
-            trace_error("%s, failed to create GLX pixmap\n", __func__);
-            goto err_3;
-            // TODO: proper resource cleanup in case of an error
-        }
-
-        if (vd->hwdec_api == HWDEC_VDPAU) {
-            VdpStatus                   st;
-            VdpPresentationQueueTarget  pq_target;
-            VdpPresentationQueue        pq;
-
-            vd->buffers[k].vdp_presentation_queue_target = VDP_INVALID_HANDLE;
-            vd->buffers[k].vdp_presentation_queue = VDP_INVALID_HANDLE;
-
-            pthread_mutex_lock(&display.lock);
-            XSync(display.x, False);
-            st = display.vdp_presentation_queue_target_create_x11(
-                                                    display.vdp_device, vd->buffers[k].pixmap,
-                                                    &pq_target);
-            report_vdpau_error(st, "VdpPresentationQueueTargetCreateX11", __func__);
-
-            st = display.vdp_presentation_queue_create(display.vdp_device, pq_target, &pq);
-            report_vdpau_error(st, "VdpPresentationQueueCreate", __func__);
-            pthread_mutex_unlock(&display.lock);
-
-            vd->buffers[k].vdp_presentation_queue_target = pq_target;
-            vd->buffers[k].vdp_presentation_queue =        pq;
-        }
     }
 
-err_3:
-    pp_resource_release(vd->graphics3d);
-err_2:
     pp_resource_release(video_decoder);
-err_1:
-    ;
 }
 
 void
@@ -960,20 +592,7 @@ ppb_video_decoder_reuse_picture_buffer(PP_Resource video_decoder, int32_t pictur
     for (uintptr_t k = 0; k < vd->buffer_count; k ++) {
         if (vd->buffers[k].id == picture_buffer_id && vd->buffers[k].used) {
             vd->buffers[k].used = 0;
-
-            struct pp_graphics3d_s *g3d = pp_resource_acquire(vd->graphics3d,
-                                                              PP_RESOURCE_GRAPHICS3D);
-            if (g3d) {
-                pthread_mutex_lock(&display.lock);
-                glXMakeCurrent(display.x, g3d->glx_pixmap, g3d->glc);
-                glBindTexture(GL_TEXTURE_2D, vd->buffers[k].texture_id);
-                display.glXReleaseTexImageEXT(display.x, vd->buffers[k].glx_pixmap, GLX_FRONT_EXT);
-                glXMakeCurrent(display.x, None, NULL);
-                XFlush(display.x);
-                pthread_mutex_unlock(&display.lock);
-
-                pp_resource_release(vd->graphics3d);
-            }
+            break;
         }
     }
 
@@ -989,7 +608,8 @@ ppb_video_decoder_flush(PP_Resource video_decoder, struct PP_CompletionCallback 
         return PP_ERROR_BADRESOURCE;
     }
 
-    avcodec_flush_buffers(vd->avctx);
+    if (vd->avctx)
+        avcodec_flush_buffers(vd->avctx);
 
     pp_resource_release(video_decoder);
     ppb_message_loop_post_work_with_result(ppb_message_loop_get_current(), callback, 0, PP_OK, 0,

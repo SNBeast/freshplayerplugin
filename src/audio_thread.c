@@ -28,14 +28,10 @@
 extern audio_stream_ops audio_alsa;
 extern audio_stream_ops audio_noaudio;
 extern audio_stream_ops audio_pulse;
-extern audio_stream_ops audio_jack;
 
 audio_stream_ops *
 audio_select_implementation(void)
 {
-    if (audio_jack.available())
-        return &audio_jack;
-
     if (audio_pulse.available())
         return &audio_pulse;
 

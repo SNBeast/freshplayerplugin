@@ -14,7 +14,6 @@ set(source_list
     async_network.c
     audio_thread.c
     audio_thread_alsa.c
-    audio_thread_jack.c
     audio_thread_noaudio.c
     audio_thread_pulseaudio.c
     config.c

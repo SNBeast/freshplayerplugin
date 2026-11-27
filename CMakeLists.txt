@@ -42,10 +42,6 @@ endif()
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLIB glib-2.0 REQUIRED)
 pkg_check_modules(REQ
-    alsa
-    libpulse
-    jack
-    soxr
     gio-2.0
     x11
     xrandr
@@ -55,9 +51,7 @@ pkg_check_modules(REQ
     libdrm
     libavcodec
     libavutil
-    libva
-    libva-x11
-    vdpau
+    libswscale
     libv4l2
     cairo
     pango
@@ -65,11 +59,18 @@ pkg_check_modules(REQ
     pangoft2
     freetype2
     REQUIRED)
+pkg_check_modules(DYLIB
+    alsa
+    libpulse
+    REQUIRED)
 
 # merge glib-2.0
 list(APPEND REQ_LIBRARY_DIRS ${GLIB_LIBRARY_DIRS})
 list(APPEND REQ_INCLUDE_DIRS ${GLIB_INCLUDE_DIRS})
 list(APPEND REQ_LIBRARIES    ${GLIB_LIBRARIES})
+
+# merge dynamic dependencies
+list(APPEND REQ_INCLUDE_DIRS ${DYLIB_INCLUDE_DIRS})
 
 # libdl.so, librt.so, and libm.so
 list(APPEND REQ_LIBRARIES ${CMAKE_DL_LIBS} rt m)

@@ -34,9 +34,6 @@
 #include <pango/pango.h>
 #include <pthread.h>
 #include <stdint.h>
-#include <va/va.h>
-#include <vdpau/vdpau.h>
-#include <vdpau/vdpau_x11.h>
 
 #define NPString_literal(str) { .UTF8Characters = str, .UTF8Length = strlen(str) }
 
@@ -44,12 +41,6 @@ typedef GLXContext
 (*glx_create_context_attribs_arb_f)(Display *dpy, GLXFBConfig config,
                                     GLXContext share_context, Bool direct,
                                     const int *attrib_list);
-
-typedef void
-(*glx_bind_tex_image_ext_f)(Display *dpy, GLXDrawable drawable, int buffer, const int *attrib_list);
-
-typedef void
-(*glx_release_tex_image_ext_f)(Display *dpy, GLXDrawable drawable, int buffer);
 
 typedef int
 (*glx_get_video_sync_sgi_f)(unsigned int *count);
@@ -60,29 +51,6 @@ typedef int
 
 struct display_s {
     Display                            *x;
-    unsigned int                        va_available;
-    VADisplay                           va;
-    unsigned int                        vdpau_available;
-    VdpDevice                           vdp_device;
-    VdpGetProcAddress                  *vdp_get_proc_address;
-    VdpGetInformationString            *vdp_get_information_string;
-    VdpDeviceDestroy                   *vdp_device_destroy;
-    VdpGetErrorString                  *vdp_get_error_string;
-    VdpDecoderCreate                   *vdp_decoder_create;
-    VdpDecoderDestroy                  *vdp_decoder_destroy;
-    VdpDecoderRender                   *vdp_decoder_render;
-    VdpVideoSurfaceCreate              *vdp_video_surface_create;
-    VdpVideoSurfaceDestroy             *vdp_video_surface_destroy;
-    VdpPresentationQueueTargetCreateX11 *vdp_presentation_queue_target_create_x11;
-    VdpPresentationQueueTargetDestroy  *vdp_presentation_queue_target_destroy;
-    VdpPresentationQueueCreate         *vdp_presentation_queue_create;
-    VdpPresentationQueueDestroy        *vdp_presentation_queue_destroy;
-    VdpPresentationQueueDisplay        *vdp_presentation_queue_display;
-    VdpOutputSurfaceCreate             *vdp_output_surface_create;
-    VdpOutputSurfaceDestroy            *vdp_output_surface_destroy;
-    VdpVideoMixerCreate                *vdp_video_mixer_create;
-    VdpVideoMixerDestroy               *vdp_video_mixer_destroy;
-    VdpVideoMixerRender                *vdp_video_mixer_render;
     Cursor                              transparent_cursor;
     pthread_mutexattr_t                 mutex_attr_recursive;
     pthread_mutex_t                     lock;
@@ -93,8 +61,6 @@ struct display_s {
     uint32_t                            min_height; ///< smallest screen height
     uint32_t                            screensaver_types;
     glx_create_context_attribs_arb_f    glXCreateContextAttribsARB;
-    glx_bind_tex_image_ext_f            glXBindTexImageEXT;
-    glx_release_tex_image_ext_f         glXReleaseTexImageEXT;
     glx_get_video_sync_sgi_f            glXGetVideoSyncSGI;
     glx_wait_video_sync_sgi_f           glXWaitVideoSyncSGI;
     uint32_t                            glx_arb_create_context;

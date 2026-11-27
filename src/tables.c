@@ -38,7 +38,6 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <va/va_x11.h>
 
 NPNetscapeFuncs     npn;
 struct display_s    display;
@@ -197,126 +196,10 @@ check_glx_extensions(void)
                                                           "GLX_EXT_create_context_es2_profile");
     display.glXCreateContextAttribsARB = (glx_create_context_attribs_arb_f)
         glXGetProcAddressARB((const GLubyte *)"glXCreateContextAttribsARB");
-    display.glXBindTexImageEXT = (glx_bind_tex_image_ext_f)
-        glXGetProcAddress((GLubyte *)"glXBindTexImageEXT");
-    display.glXReleaseTexImageEXT = (glx_release_tex_image_ext_f)
-        glXGetProcAddress((GLubyte *)"glXReleaseTexImageEXT");
     display.glXGetVideoSyncSGI = (glx_get_video_sync_sgi_f)
         glXGetProcAddress((GLubyte *)"glXGetVideoSyncSGI");
     display.glXWaitVideoSyncSGI = (glx_wait_video_sync_sgi_f)
         glXGetProcAddress((GLubyte *)"glXWaitVideoSyncSGI");
-}
-
-static
-void *
-get_proc_helper(VdpFuncId func_id)
-{
-    void *func = NULL;
-    if (display.vdp_get_proc_address(display.vdp_device, func_id, &func) != VDP_STATUS_OK) {
-        trace_error("%s, can't get VDPAU function %d address\n", __func__, (int)func_id);
-        func = NULL;
-    }
-
-    return func;
-}
-
-static
-void
-initialize_vaapi(void)
-{
-    int major, minor;
-
-    display.va = vaGetDisplay(display.x);
-    VAStatus st = vaInitialize(display.va, &major, &minor);
-    if (st == VA_STATUS_SUCCESS) {
-        trace_info_f("libva version %d.%d\n", major, minor);
-        trace_info_f("libva driver vendor: %s\n", vaQueryVendorString(display.va));
-        display.va_available = 1;
-    } else {
-        trace_info_f("%s, failed to initialize VA device, %d, %s\n", __func__, (int)st,
-                     vaErrorStr(st));
-        trace_info_f("%s, no VA-API available\n", __func__);
-    }
-}
-
-static
-void
-deinitialize_vaapi(void)
-{
-    if (display.va)
-        vaTerminate(display.va);
-    display.va = NULL;
-}
-
-static
-void
-initialize_vdpau(void)
-{
-    display.vdp_device = VDP_INVALID_HANDLE;
-    VdpStatus st = vdp_device_create_x11(display.x, DefaultScreen(display.x), &display.vdp_device,
-                               &display.vdp_get_proc_address);
-
-    if (st == VDP_STATUS_OK && display.vdp_get_proc_address) {
-        display.vdp_get_error_string = get_proc_helper(VDP_FUNC_ID_GET_ERROR_STRING);
-        display.vdp_get_information_string = get_proc_helper(VDP_FUNC_ID_GET_INFORMATION_STRING);
-        display.vdp_device_destroy = get_proc_helper(VDP_FUNC_ID_DEVICE_DESTROY);
-        display.vdp_decoder_create = get_proc_helper(VDP_FUNC_ID_DECODER_CREATE);
-        display.vdp_decoder_destroy = get_proc_helper(VDP_FUNC_ID_DECODER_DESTROY);
-        display.vdp_decoder_render = get_proc_helper(VDP_FUNC_ID_DECODER_RENDER);
-        display.vdp_video_surface_create = get_proc_helper(VDP_FUNC_ID_VIDEO_SURFACE_CREATE);
-        display.vdp_video_surface_destroy = get_proc_helper(VDP_FUNC_ID_VIDEO_SURFACE_DESTROY);
-        display.vdp_presentation_queue_target_create_x11 =
-                                get_proc_helper(VDP_FUNC_ID_PRESENTATION_QUEUE_TARGET_CREATE_X11);
-        display.vdp_presentation_queue_target_destroy =
-                                    get_proc_helper(VDP_FUNC_ID_PRESENTATION_QUEUE_TARGET_DESTROY);
-        display.vdp_presentation_queue_create =
-                                            get_proc_helper(VDP_FUNC_ID_PRESENTATION_QUEUE_CREATE);
-        display.vdp_presentation_queue_destroy =
-                                            get_proc_helper(VDP_FUNC_ID_PRESENTATION_QUEUE_DESTROY);
-        display.vdp_presentation_queue_display =
-                                            get_proc_helper(VDP_FUNC_ID_PRESENTATION_QUEUE_DISPLAY);
-        display.vdp_output_surface_create = get_proc_helper(VDP_FUNC_ID_OUTPUT_SURFACE_CREATE);
-        display.vdp_output_surface_destroy = get_proc_helper(VDP_FUNC_ID_OUTPUT_SURFACE_DESTROY);
-        display.vdp_video_mixer_create = get_proc_helper(VDP_FUNC_ID_VIDEO_MIXER_CREATE);
-        display.vdp_video_mixer_destroy = get_proc_helper(VDP_FUNC_ID_VIDEO_MIXER_DESTROY);
-        display.vdp_video_mixer_render = get_proc_helper(VDP_FUNC_ID_VIDEO_MIXER_RENDER);
-
-        if (display.vdp_get_error_string && display.vdp_get_information_string &&
-            display.vdp_device_destroy && display.vdp_decoder_create &&
-            display.vdp_decoder_destroy && display.vdp_decoder_render &&
-            display.vdp_video_surface_create && display.vdp_video_surface_destroy &&
-            display.vdp_presentation_queue_target_create_x11 &&
-            display.vdp_presentation_queue_target_destroy &&
-            display.vdp_presentation_queue_create && display.vdp_presentation_queue_destroy &&
-            display.vdp_presentation_queue_display && display.vdp_output_surface_create &&
-            display.vdp_output_surface_destroy && display.vdp_video_mixer_create &&
-            display.vdp_video_mixer_destroy && display.vdp_video_mixer_render)
-        {
-            display.vdpau_available = 1;
-
-            const char *info_str;
-            if (display.vdp_get_information_string(&info_str) == VDP_STATUS_OK)
-                trace_info_f("VDPAU driver: %s\n", info_str);
-            else
-                trace_error("%s, failed to get VDPAU driver version\n", __func__);
-
-        } else {
-            trace_error("%s, some essential VDPAU functions missing\n", __func__);
-        }
-
-     } else {
-         trace_info_f("%s, failed to initialize VDPAU device, no VDPAU available\n", __func__);
-     }
-}
-
-static
-void
-deinitialize_vdpau(void)
-{
-    if (display.vdp_device_destroy && display.vdp_device != VDP_INVALID_HANDLE) {
-        display.vdp_device_destroy(display.vdp_device);
-        display.vdp_device = VDP_INVALID_HANDLE;
-    }
 }
 
 int
@@ -340,18 +223,7 @@ tables_open_display(void)
     if (config.quirks.x_synchronize)
         XSynchronize(display.x, True);
 
-    display.dri_fd = open("/dev/dri/card0", O_RDWR);
-
-    display.va_available = 0;
-    display.vdpau_available = 0;
-
-    if (config.enable_hwdec) {
-        if (config.enable_vaapi)
-            initialize_vaapi();
-
-        if (config.enable_vdpau)
-            initialize_vdpau();
-    }
+    display.dri_fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
 
     if (!glXQueryVersion(display.x, &major, &minor)) {
         trace_error("%s, glXQueryVersion returned False\n", __func__);
@@ -443,16 +315,10 @@ tables_close_display(void)
     pthread_mutex_lock(&display.lock);
     screensaver_disconnect();
 
-    if (config.enable_hwdec) {
-        if (config.enable_vaapi)
-            deinitialize_vaapi();
-
-        if (config.enable_vdpau)
-            deinitialize_vdpau();
+    if (display.dri_fd >= 0) {
+        close(display.dri_fd);
+        display.dri_fd = -1;
     }
-
-    close(display.dri_fd);
-    display.dri_fd = -1;
 
     XFreeCursor(display.x, display.transparent_cursor);
     XCloseDisplay(display.x);

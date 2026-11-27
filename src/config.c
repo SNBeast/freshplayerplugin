@@ -35,14 +35,9 @@
 static struct fpp_config_s default_config = {
     .audio_buffer_min_ms =      20,
     .audio_buffer_max_ms =      500,
-    .audio_use_jack      =      0,
-    .jack_autoconnect_ports =   1,
-    .jack_server_name =         NULL,
-    .jack_autostart_server =    1,
     .pepperflash_path    =      NULL,
     .flash_command_line  =      "",
     .enable_3d           =      1,
-    .enable_hwdec        =      0,
     .quiet =                    0,
     .fullscreen_width    =      0,
     .fullscreen_height   =      0,
@@ -53,8 +48,6 @@ static struct fpp_config_s default_config = {
     .device_scale        =      1.0,
     .enable_windowed_mode   =   1,
     .enable_xembed          =   1,
-    .enable_vaapi =             1,
-    .enable_vdpau =             1,
     .tie_fullscreen_window_to_browser = 1,
     .vsync_afterwait_us =       0,
     .fs_delay_ms =              300,
@@ -78,14 +71,9 @@ static struct fpp_config_s default_config = {
 static cfg_opt_t opts[] = {
     CFG_SIMPLE_INT("audio_buffer_min_ms",    &config.audio_buffer_min_ms),
     CFG_SIMPLE_INT("audio_buffer_max_ms",    &config.audio_buffer_max_ms),
-    CFG_SIMPLE_INT("audio_use_jack",         &config.audio_use_jack),
-    CFG_SIMPLE_INT("jack_autoconnect_ports", &config.jack_autoconnect_ports),
-    CFG_SIMPLE_STR("jack_server_name",       &config.jack_server_name),
-    CFG_SIMPLE_INT("jack_autostart_server",  &config.jack_autostart_server),
     CFG_SIMPLE_STR("pepperflash_path",       &config.pepperflash_path),
     CFG_SIMPLE_STR("flash_command_line",     &config.flash_command_line),
     CFG_SIMPLE_INT("enable_3d",              &config.enable_3d),
-    CFG_SIMPLE_INT("enable_hwdec",           &config.enable_hwdec),
     CFG_SIMPLE_INT("quiet",                  &config.quiet),
     CFG_SIMPLE_INT("fullscreen_width",       &config.fullscreen_width),
     CFG_SIMPLE_INT("fullscreen_height",      &config.fullscreen_height),
@@ -96,8 +84,6 @@ static cfg_opt_t opts[] = {
     CFG_SIMPLE_FLOAT("device_scale",         &config.device_scale),
     CFG_SIMPLE_INT("enable_windowed_mode",   &config.enable_windowed_mode),
     CFG_SIMPLE_INT("enable_xembed",          &config.enable_xembed),
-    CFG_SIMPLE_INT("enable_vaapi",           &config.enable_vaapi),
-    CFG_SIMPLE_INT("enable_vdpau",           &config.enable_vdpau),
     CFG_SIMPLE_INT("vsync_afterwait_us",     &config.vsync_afterwait_us),
     CFG_SIMPLE_INT("fs_delay_ms",            &config.fs_delay_ms),
     CFG_SIMPLE_INT("enable_vsync",           &config.enable_vsync),
@@ -187,7 +173,6 @@ fpp_config_initialize(void)
 
     // all non-NULL strings values need to be duplicated, since config parser free()'s
     // their previous versions
-    DUP_CFG_STRING(config.jack_server_name);
     DUP_CFG_STRING(config.pepperflash_path);
     DUP_CFG_STRING(config.flash_command_line);
 
@@ -240,7 +225,6 @@ fpp_config_destroy(void)
 
     FREE_IF_CHANGED(pepperflash_path);
     FREE_IF_CHANGED(flash_command_line);
-    FREE_IF_CHANGED(jack_server_name);
     FREE_IF_CHANGED(fullscreen_window_geometry);
     g_free(pepper_data_dir);
     g_free(pepper_salt_file_name);
