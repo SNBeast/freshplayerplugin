@@ -42,11 +42,16 @@ jobs:
         name: artifact-ia32
         path: artifact
   x64-build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
-    - name: Build
-      run: sudo .github/scripts/build.sh
+    - name: Build inside container
+      run: |
+        docker run --rm \
+        --security-opt seccomp=unconfined \
+        -v "${{ github.workspace }}:/work" \
+        -w /work amd64/debian:bullseye \
+        bash -c ".github/scripts/build_bullseye.sh"
     - name: Upload Artifacts
       uses: actions/upload-artifact@master
       with:
